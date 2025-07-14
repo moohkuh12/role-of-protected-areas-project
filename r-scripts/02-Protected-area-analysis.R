@@ -187,23 +187,23 @@ st_crs(intersected)
 
 # STEP 1: Assign numeric protection level
 # Define protection level mapping for IUCN categories (lower number = higher protection)
-protection_mapping <- c(
-  "Ia" = 1, "Ib" = 1,
-  "II" = 2,
-  "III" = 3,
-  "IV" = 4,
-  "V" = 5,
-  "VI" = 6,
-  "Not Applicable" = 7,
-  "Not Assigned" = 7,
-  "Not Reported" = 7
-)
-
+# STEP 1: Assign numeric protection level based on IUCN_CAT and DESIG
 intersected_filtered <- intersected %>%
   mutate(
-    IUCN_CAT_numeric = if_else(IUCN_CAT %in% names(protection_mapping),
-                               protection_mapping[IUCN_CAT], 8)
+    IUCN_CAT_numeric = case_when(
+      IUCN_CAT %in% c("Ia", "Ib") ~ 1,
+      IUCN_CAT == "II" ~ 2,
+      IUCN_CAT == "III" ~ 3,
+      IUCN_CAT == "IV" ~ 4,
+      IUCN_CAT == "V" ~ 5,
+      IUCN_CAT == "VI" ~ 6,
+      IUCN_CAT == "Not Reported" & DESIG == "Special Areas of Conservation (Habitats Directive)" ~ 7,
+      IUCN_CAT == "Not Reported" & DESIG == "Special Protection Area (Birds Directive)" ~ 8,
+      IUCN_CAT %in% c("Not Applicable", "Not Assigned") ~ 9,
+      TRUE ~ 10 # fallback for unexpected cases
+    )
   )
+
 
 # STEP 2: Split PA fragments by grid cell
 intersected_split <- split(intersected_filtered, intersected_filtered$id)
