@@ -187,23 +187,23 @@ st_crs(intersected)
 
 # STEP 1: Assign numeric protection level
 # Define protection level mapping for IUCN categories (lower number = higher protection)
-protection_mapping <- c(
-  "Ia" = 1, "Ib" = 1,
-  "II" = 2,
-  "III" = 3,
-  "IV" = 4,
-  "V" = 5,
-  "VI" = 6,
-  "Not Applicable" = 7,
-  "Not Assigned" = 7,
-  "Not Reported" = 7
-)
-
+# STEP 1: Assign numeric protection level based on IUCN_CAT and DESIG
 intersected_filtered <- intersected %>%
   mutate(
-    IUCN_CAT_numeric = if_else(IUCN_CAT %in% names(protection_mapping),
-                               protection_mapping[IUCN_CAT], 8)
+    IUCN_CAT_numeric = case_when(
+      IUCN_CAT %in% c("Ia", "Ib") ~ 1,
+      IUCN_CAT == "II" ~ 2,
+      IUCN_CAT == "III" ~ 3,
+      IUCN_CAT == "IV" ~ 4,
+      IUCN_CAT == "V" ~ 5,
+      IUCN_CAT == "VI" ~ 6,
+      IUCN_CAT == "Not Reported" & DESIG == "Special Areas of Conservation (Habitats Directive)" ~ 7,
+      IUCN_CAT == "Not Reported" & DESIG == "Special Protection Area (Birds Directive)" ~ 8,
+      IUCN_CAT %in% c("Not Applicable", "Not Assigned") ~ 9,
+      TRUE ~ 10 # fallback for unexpected cases
+    )
   )
+
 
 # STEP 2: Split PA fragments by grid cell
 intersected_split <- split(intersected_filtered, intersected_filtered$id)
@@ -256,7 +256,7 @@ intersected_filtered %>%
   arrange(desc(overlap_area)) %>%
   View()
 
-# STEP 6: Calculate flächengewichteter Schutzstatus pro Zelle
+# STEP 6: Calculate area-weighted protection status per cell
 iucn_weighted <- intersected_filtered %>%
   group_by(id) %>%
   summarise(
@@ -271,23 +271,44 @@ iucn_weighted <- intersected_filtered %>%
       IUCN_CAT_numeric_rounded == 4 ~ "IV",
       IUCN_CAT_numeric_rounded == 5 ~ "V",
       IUCN_CAT_numeric_rounded == 6 ~ "VI",
-      IUCN_CAT_numeric_rounded == 7 ~ "Not Reported",
+      IUCN_CAT_numeric_rounded == 7 ~ "Habitats Directive (Natura 2000)",
+      IUCN_CAT_numeric_rounded == 8 ~ "Birds Directive (Natura 2000)",
+      IUCN_CAT_numeric_rounded == 9 ~ "Not Assigned/Applicable",
       TRUE ~ "Not Protected"
     )
   )
+
+# Calculate the dominant year of protection status designation per area in a grid cell
+dominant_year <- intersected_filtered %>%
+  group_by(id, STATUS_YR) %>%
+  summarise(area_sum = sum(overlap_area, na.rm = TRUE), .groups = "drop") %>%
+  group_by(id) %>%
+  slice_max(order_by = area_sum, n = 1, with_ties = FALSE)
 
 # Step 6: Prepare iucn_weighted for join by removing geometry
 iucn_weighted_df <- iucn_weighted %>%
   st_set_geometry(NULL)
 
-# Step 7: Join weighted protection categories back to grid and finalize
+iucn_weighted_df <- iucn_weighted_df %>%
+  left_join(dominant_year %>% select(id, dominant_status_yr = STATUS_YR), by = "id")
+
+iucn_weighted_df_clean <- as.data.frame(iucn_weighted_df) %>%
+  select(-geometry)
+
+
 grid_sf_coverage <- grid_cov_area %>%
-  left_join(iucn_weighted_df, by = "id") %>%
+  left_join(iucn_weighted_df_clean, by = "id")
+
+# explizit sicherstellen, dass die Geometrie korrekt gesetzt ist
+grid_sf_coverage <- st_as_sf(grid_sf_coverage)
+
+# jetzt mutate
+grid_sf_coverage <- grid_sf_coverage %>%
   mutate(
     cell_area = as.numeric(cell_area),
-    cov_frac = if_else(is.na(cov_frac), 0, cov_frac),
-    IUCN_CAT_numeric_rounded = if_else(is.na(IUCN_CAT_numeric_rounded), 8, IUCN_CAT_numeric_rounded)
+    cov_frac = if_else(is.na(cov_frac), 0, cov_frac)
   )
+
 
 
 summary(grid_sf_coverage$cov_frac)
