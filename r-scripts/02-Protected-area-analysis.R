@@ -132,62 +132,46 @@ grid_joined <- grid_joined %>% select(id, MTB_Q, cell_area, geometry)
 # Optionally, write the joined grid to a shapefile:
 # st_write(grid_joined, "./data/landcover_analysis/grid_joined.shp")
 
-# Read in the previously saved grid shapefile to avoid re-running the above code
+# Load grid
 grid_joined <- st_read("./data/landcover_analysis/grid_joined.shp")
 
-# PART 5: Intersection between the grid and protected areas ----
-
-# This results in polygons that contain only the overlapping parts.
-st_crs(PAs)         # Check the coordinate reference system (CRS) of PAs
-st_crs(grid_joined) # Check the CRS of the grid
-
-# Transform PAs to the same CRS as grid_joined
+# Transform PAs to same CRS
 PAs <- st_transform(PAs, st_crs(grid_joined))
-st_crs(PAs)
 
-# Calculate the area of each protected area polygon
+# Calculate PA areas
 PA_areas <- PAs %>%
-  mutate(pa_area = st_area(.))
+  mutate(pa_area = st_area(.),
+         GIS_T_AREA = GIS_AREA - GIS_M_AREA)
 
-# Calculate the actual terrestrial area of the respective PAs (for coastal PAs important)
-PA_areas <- PA_areas %>%
-  mutate(GIS_T_AREA = GIS_AREA - GIS_M_AREA)
-
-# Filter for only protected areas larger than 25 km²:
-# PAs_analysis <- PA_areas %>% filter(as.numeric(GIS_AREA) >= 25)
-
-# Perform the spatial intersection (this line is commented out; uncomment to run - takes really long)
+# Intersect grid with protected areas (this takes time)
 intersected <- st_intersection(grid_joined, PA_areas)
 
-# Write the intersected result to a shapefile:
- st_write(intersected, "./data/Protected-areas/Intermediate/intersected_protected_areas.shp")
+# Save intermediate file
+st_write(intersected, "./data/Protected-areas/Intermediate/intersected_protected_areas.shp")
 
-# Load the intersected shapefile (previously created)
+# Reload intersected data
 intersected <- st_read("./data/Protected-areas/Intermediate/intersected_protected_areas.shp")
-st_crs(intersected)
 
+intersected %>%
+  st_set_geometry(NULL) %>%
+  filter(IUCN_CAT == "VI") %>%
+  count(DESIG, sort = TRUE)
 
-# PART 5b: Clean union of PA fragments per grid cell and weighted protection score ----
+# STEP 1: Assign numeric protection categories and flag zones with active management
+# ------------------------------------------------------------------------------
+# Each protected area fragment is assigned a numeric code that reflects its legal protection level.
+# Categories Ia–V follow the official IUCN classification (1–5).
+# Natura 2000 areas are split into Habitats Directive (6) and Birds Directive (7).
+# UNESCO biosphere reserves receive category 8.
+# National biosphere zones (core, buffer, transition) receive category 9.
+# Not Assigned or Not Applicable categories are grouped as 10.
+# All other or unexpected types are assigned category 11 (fallback).
+# Additionally, a binary flag 'has_management' indicates whether the area is under some form
+# of active or regulated management (e.g. Natura 2000, biosphere buffer zones, IUCN IV–V).
 
-# PROBLEM:
-# In many grid cells, multiple protected areas with different IUCN categories overlap, including cases 
-# where small fragments of highly protected areas (e.g., IUCN I or II ) intersect with much larger, 
-# less strictly classified or unclassified protected areas (e.g. IUCN Cat V or Not Reported).
-# If such overlaps are not cleaned beforehand, the resulting protection fraction (cov_frac) can 
-# artificially exceed 1 due to internal overlaps being double-counted.
-# Additionally, classifying a cell by just the highest protection category – without considering area –
-# can distort ecological interpretations, especially if the majority of the cell is protected 
-# by a different PA.
+# Large placeholder polygons for entire biosphere reserves (DESIG == "Biosphärenreservat")
+# are excluded from the analysis to avoid overweighting uninformative spatial hulls.
 
-# SOLUTION:
-# To avoid these issues, we first dissolve all overlapping PA fragments within each cell 
-# to remove internal overlaps and ensure area fractions add up to max 100%.
-# We then calculate a flächengewichtete IUCN protection score per cell, using the actual 
-# non-overlapping PA areas as weights.
-
-# STEP 1: Assign numeric protection level
-# Define protection level mapping for IUCN categories (lower number = higher protection)
-# STEP 1: Assign numeric protection level based on IUCN_CAT and DESIG
 intersected_filtered <- intersected %>%
   mutate(
     IUCN_CAT_numeric = case_when(
@@ -196,127 +180,209 @@ intersected_filtered <- intersected %>%
       IUCN_CAT == "III" ~ 3,
       IUCN_CAT == "IV" ~ 4,
       IUCN_CAT == "V" ~ 5,
-      IUCN_CAT == "VI" ~ 6,
-      IUCN_CAT == "Not Reported" & DESIG == "Special Areas of Conservation (Habitats Directive)" ~ 7,
-      IUCN_CAT == "Not Reported" & DESIG == "Special Protection Area (Birds Directive)" ~ 8,
-      IUCN_CAT %in% c("Not Applicable", "Not Assigned") ~ 9,
-      TRUE ~ 10 # fallback for unexpected cases
+      IUCN_CAT == "Not Reported" & DESIG == "Special Areas of Conservation (Habitats Directive)" ~ 6,
+      IUCN_CAT == "Not Reported" & DESIG == "Special Protection Area (Birds Directive)" ~ 7,
+      DESIG == "UNESCO-MAB Biosphere Reserve" ~ 8,
+      grepl("Biosphärenreservat - (Pflegezone|Entwicklungszone|Kernzone)", DESIG) ~ 9,
+      IUCN_CAT %in% c("Not Applicable", "Not Assigned") ~ 10,
+      TRUE ~ 11  # fallback for unclassified/mixed
+    ),
+    
+    # Flag for management
+    has_management = case_when(
+      IUCN_CAT_numeric %in% c(4, 5, 6, 7) ~ TRUE,
+      grepl("Pflegezone|Entwicklungszone", DESIG, ignore.case = TRUE) ~ TRUE,
+      DESIG == "UNESCO-MAB Biosphere Reserve" ~ TRUE,
+      TRUE ~ FALSE
     )
+  ) %>%
+  
+  # Exclude large uninformative parent Biosphärenreservat hulls
+  filter(!(DESIG == "Biosphärenreservat"))
+
+# Create area-weighted management score per grid cell
+management_weighted <- intersected_filtered %>%
+  group_by(id) %>%
+  summarise(
+    mean_mgmt = sum(overlap_area * has_management, na.rm = TRUE) / sum(overlap_area, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  mutate(
+    dominant_management = mean_mgmt > 0.5
   )
 
 
-# STEP 2: Split PA fragments by grid cell
+# STEP 2: Split by grid cell
 intersected_split <- split(intersected_filtered, intersected_filtered$id)
 
-# STEP 3: Remove internal overlaps by unioning PA fragments within each grid cell
-
+# STEP 3: Remove internal overlaps per cell
 intersected_union <- map_dfr(intersected_split, function(df) {
   union_geom <- st_union(df)
   tibble(id = unique(df$id), geometry = union_geom)
 }) %>% st_as_sf(crs = st_crs(intersected))
-# st_write(intersected_union, "./data/Protected-areas/Intermediate/intersected_union.gpkg")
 
-
-# Step 4.1: Convert intersected_union into a regular dataframe with PA geometry as a list-column
+# STEP 4: Clean coverage fraction using dissolved geometries
 intersected_union_df <- intersected_union %>%
   mutate(geometry_pa = geometry) %>%
-  st_set_geometry(NULL) %>%         # Drop sf class
-  select(id, geometry_pa)           # Keep only id and PA geometry
+  st_set_geometry(NULL) %>%
+  select(id, geometry_pa)
 
-# Step 4.2: Join to the grid and compute clean cov_frac based on dissolved (non-overlapping) PA geometries
 grid_cov_area <- grid_joined %>%
   left_join(intersected_union_df, by = "id") %>%
   mutate(
-    # Use original grid geometry
     cell_area = st_area(geometry),
-    
-    # Compute area of dissolved PA geometry, if not empty; otherwise set to 0
     pa_area_clean = if_else(
       !map_lgl(geometry_pa, st_is_empty),
       st_area(st_sfc(geometry_pa, crs = st_crs(grid_joined))),
       units::set_units(0, m^2)
     ),
-    
-    # Calculate the cleaned protection fraction
     cov_frac = as.numeric(pa_area_clean / cell_area)
   )
 
-
-# STEP 5: Add area of each intersected PA fragment
+# STEP 5: Add area of each PA fragment
 intersected_filtered <- intersected_filtered %>%
   mutate(overlap_area = as.numeric(st_area(.)))
 
-# Safe intersected_filtered for later chhecking which PAs are associated with which id
+# Optional: Save for checking
 st_write(intersected_filtered, "./data/Protected-areas/intersected_filtered.gpkg")
 
-# For example: 
-intersected_filtered %>%
-  filter(id == 1237) %>%
-  select(NAME, WDPAID, IUCN_CAT, IUCN_CAT_numeric, overlap_area) %>%
-  arrange(desc(overlap_area)) %>%
-  View()
+# STEP 6: Calculate area-weighted IUCN protection class per grid cell
+#
+# For each grid cell (id), an area-weighted average of the assigned protection category
+# is calculated across all overlapping protected area fragments.
+# The resulting mean score is not simply rounded, but classified using defined intervals:
+# e.g., [4,5) = IUCN IV, [8,9) = UNESCO Biosphere, [9,10) = Biosphere Reserve (Zoned).
+# This avoids misclassification in mixed-protection cases (e.g. 90% IUCN 10 + 10% IUCN 4)
+# and allows separating truly unprotected cells from those with undefined or unclear categories.
+# The final categorical label 'IUCN_CAT_final' reflects the dominant protection type in a cell.
 
-# STEP 6: Calculate area-weighted protection status per cell
 iucn_weighted <- intersected_filtered %>%
   group_by(id) %>%
   summarise(
-    mean_weighted_iucn = sum(IUCN_CAT_numeric * overlap_area, na.rm = TRUE) / sum(overlap_area, na.rm = TRUE)
+    mean_weighted_iucn = sum(IUCN_CAT_numeric * overlap_area, na.rm = TRUE) / sum(overlap_area, na.rm = TRUE),
+    .groups = "drop"
   ) %>%
   mutate(
-    IUCN_CAT_numeric_rounded = round(mean_weighted_iucn),
+    IUCN_CAT_numeric_rounded = floor(mean_weighted_iucn),
     IUCN_CAT_final = case_when(
-      IUCN_CAT_numeric_rounded == 1 ~ "Ia/Ib",
-      IUCN_CAT_numeric_rounded == 2 ~ "II",
-      IUCN_CAT_numeric_rounded == 3 ~ "III",
-      IUCN_CAT_numeric_rounded == 4 ~ "IV",
-      IUCN_CAT_numeric_rounded == 5 ~ "V",
-      IUCN_CAT_numeric_rounded == 6 ~ "VI",
-      IUCN_CAT_numeric_rounded == 7 ~ "Habitats Directive (Natura 2000)",
-      IUCN_CAT_numeric_rounded == 8 ~ "Birds Directive (Natura 2000)",
-      IUCN_CAT_numeric_rounded == 9 ~ "Not Assigned/Applicable",
-      TRUE ~ "Not Protected"
+      mean_weighted_iucn >= 1 & mean_weighted_iucn < 2 ~ "Ia/Ib",
+      mean_weighted_iucn >= 2 & mean_weighted_iucn < 3 ~ "II",
+      mean_weighted_iucn >= 3 & mean_weighted_iucn < 4 ~ "III",
+      mean_weighted_iucn >= 4 & mean_weighted_iucn < 5 ~ "IV",
+      mean_weighted_iucn >= 5 & mean_weighted_iucn < 6 ~ "V",
+      mean_weighted_iucn >= 6 & mean_weighted_iucn < 7 ~ "Habitats Directive (Natura 2000)",
+      mean_weighted_iucn >= 7 & mean_weighted_iucn < 8 ~ "Birds Directive (Natura 2000)",
+      mean_weighted_iucn >= 8 & mean_weighted_iucn < 9 ~ "Biosphere Reserve (UNESCO)",
+      mean_weighted_iucn >= 9 & mean_weighted_iucn < 10 ~ "Biosphere Reserve (Zoned)",
+      mean_weighted_iucn >= 10 & mean_weighted_iucn < 11 ~ "Not Assigned/Applicable",
+      mean_weighted_iucn >= 11 ~ "Mixed/Undefined Protected",
+      TRUE ~ "Unprotected"
     )
   )
+# For each grid cell (id), we calculate an area-weighted protection value that reflects the 
+# average level of legal protection based on the overlapping protected area fragments.
+# Each protected area is first translated into a numeric IUCN score (1 = strictest, 9 = least defined).
+# The protection score is weighted by the area of overlap within the grid cell to reflect 
+# the spatial dominance of each category.
+# Instead of rounding the weighted value (which could artificially favor high categories due to small fragments),
+# we classify the result using defined intervals (e.g. [4,5) = IUCN IV, [8,9) = Birds Directive).
+# This avoids overinterpreting mixed or uncertain cases and allows us to assign a final protection class
+# to each grid cell, including categories such as "Not Assigned" or "Mixed/Undefined Protected"
+# for cells where no clear classification is possible.
 
-# Calculate the dominant year of protection status designation per area in a grid cell
+
+
+# determine dominant designation year of largest PA in cell
 dominant_year <- intersected_filtered %>%
   group_by(id, STATUS_YR) %>%
   summarise(area_sum = sum(overlap_area, na.rm = TRUE), .groups = "drop") %>%
   group_by(id) %>%
   slice_max(order_by = area_sum, n = 1, with_ties = FALSE)
 
-# Step 6: Prepare iucn_weighted for join by removing geometry
-iucn_weighted_df <- iucn_weighted %>%
-  st_set_geometry(NULL)
 
-iucn_weighted_df <- iucn_weighted_df %>%
-  left_join(dominant_year %>% select(id, dominant_status_yr = STATUS_YR), by = "id")
-
-iucn_weighted_df_clean <- as.data.frame(iucn_weighted_df) %>%
-  select(-geometry)
+# ===========================
+# STEP 7: Final Join + Output
+# ===========================
+iucn_weighted_df_clean <- iucn_weighted %>%
+  st_set_geometry(NULL) %>%
+  left_join(
+    dominant_year %>% st_set_geometry(NULL) %>% select(id, dominant_status_yr = STATUS_YR),
+    by = "id"
+  ) %>%
+  left_join(management_weighted, by = "id")
 
 
 grid_sf_coverage <- grid_cov_area %>%
-  left_join(iucn_weighted_df_clean, by = "id")
-
-# explizit sicherstellen, dass die Geometrie korrekt gesetzt ist
-grid_sf_coverage <- st_as_sf(grid_sf_coverage)
-
-# jetzt mutate
-grid_sf_coverage <- grid_sf_coverage %>%
+  left_join(iucn_weighted_df_clean, by = "id") %>%
   mutate(
     cell_area = as.numeric(cell_area),
     cov_frac = if_else(is.na(cov_frac), 0, cov_frac)
-  )
+  ) %>%
+  st_as_sf()
+
+# Grid with cell geometries
+st_write(grid_sf_coverage, "./data/Protected-areas/final_output.gpkg", layer = "grid_cells", delete_layer = TRUE)
+
+# Protected area geometries per cell
+st_write(
+  intersected_union %>% select(id, geometry_pa = geometry),
+  "./data/Protected-areas/final_output.gpkg",
+  layer = "protected_area_geoms",
+  append = TRUE
+)
 
 
+
+
+
+
+
+
+intersected_filtered_clean %>%
+  filter(IUCN_CAT_numeric == 8) %>%
+  select(NAME, DESIG, IUCN_CAT_numeric, overlap_area) %>%
+  distinct()
+
+# Check example: 
+intersected_filtered %>%
+  filter(id == 10154) %>%
+  select(NAME, WDPAID, DESIG,IUCN_CAT, IUCN_CAT_numeric, overlap_area) %>%
+  arrange(desc(overlap_area)) %>%
+  View()
+
+intersected %>%
+  st_set_geometry(NULL) %>%
+  count(DESIG, sort = TRUE)
 
 summary(grid_sf_coverage$cov_frac)
 st_crs(grid_sf_coverage) # Check the CRS of the resulting grid
 # NOTE: The CRS is still 25832, because of the spatial calcuations
 
+# 1. Explizit benennen und Geometrie korrekt sichern
+grid_sf_coverage_clean <- grid_sf_coverage
+
+# 2. Umbenennen, solange Geometrie aktiv ist
+names(grid_sf_coverage_clean)[which(names(grid_sf_coverage_clean) == "geometry.x")] <- "geometry_grid"
+
+# 3. Entferne unerwünschte Geometrie (geometry.y)
+grid_sf_coverage_clean$geometry.y <- NULL
+
+# 4. Setze die aktive Geometriespalte korrekt
+st_geometry(grid_sf_coverage_clean) <- "geometry_grid"
+
+
+# 2. Geometrie neu setzen (aus geometry_grid)
+grid_sf_coverage_clean <- st_as_sf(grid_sf_coverage_clean, sf_column_name = "geometry_grid", crs = st_crs(grid_sf_coverage))
+
+
 # Save the result
-st_write(grid_sf_coverage, "./data/Protected-areas/grid_sf_coverage.gpkg")
+st_write(grid_sf_coverage_clean, "./data/Protected-areas/grid_sf_coverage_clean.gpkg", delete_dsn = TRUE)
+
+grid_df_csv <- grid_sf_coverage_clean %>%
+  st_set_geometry(NULL)
+
+write.csv(grid_df_csv, "./data/Protected-areas/grid_sf_coverage_clean.csv", row.names = FALSE)
+
 
 # PART 6: Sensitivity Analysis: Classify grid cells based on protected area coverage ----
 
@@ -327,7 +393,7 @@ st_write(grid_sf_coverage, "./data/Protected-areas/grid_sf_coverage.gpkg")
 # Same logic applies for 80%, 70%, 60%, and 50% thresholds.
 
 # Make a dataset with all sensitivities
-grid_sf_coverage_all <- grid_sf_coverage %>%
+grid_sf_coverage_all <- grid_sf_coverage_clean %>%
   mutate(
     protection90 = case_when(
       cov_frac >= 0.9 ~ "protected",
