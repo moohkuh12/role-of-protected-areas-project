@@ -174,6 +174,7 @@ intersected %>%
 
 intersected_filtered <- intersected %>%
   mutate(
+    # IUCN category classification (differentiated for biosphere core zone)
     IUCN_CAT_numeric = case_when(
       IUCN_CAT %in% c("Ia", "Ib") ~ 1,
       IUCN_CAT == "II" ~ 2,
@@ -182,23 +183,25 @@ intersected_filtered <- intersected %>%
       IUCN_CAT == "V" ~ 5,
       IUCN_CAT == "Not Reported" & DESIG == "Special Areas of Conservation (Habitats Directive)" ~ 6,
       IUCN_CAT == "Not Reported" & DESIG == "Special Protection Area (Birds Directive)" ~ 7,
-      DESIG == "UNESCO-MAB Biosphere Reserve" ~ 8,
-      grepl("Biosphärenreservat - (Pflegezone|Entwicklungszone|Kernzone)", DESIG) ~ 9,
+      DESIG == "Biosphärenreservat - Kernzone" ~ 8,
+      DESIG %in% c("Biosphärenreservat - Pflegezone", "Biosphärenreservat - Entwicklungszone") ~ 9,
       IUCN_CAT %in% c("Not Applicable", "Not Assigned") ~ 10,
-      TRUE ~ 11  # fallback for unclassified/mixed
+      TRUE ~ 11
     ),
     
     # Flag for management
     has_management = case_when(
       IUCN_CAT_numeric %in% c(4, 5, 6, 7) ~ TRUE,
-      grepl("Pflegezone|Entwicklungszone", DESIG, ignore.case = TRUE) ~ TRUE,
-      DESIG == "UNESCO-MAB Biosphere Reserve" ~ TRUE,
+      DESIG %in% c("Biosphärenreservat - Pflegezone", "Biosphärenreservat - Entwicklungszone") ~ TRUE,
       TRUE ~ FALSE
     )
   ) %>%
   
   # Exclude large uninformative parent Biosphärenreservat hulls
-  filter(!(DESIG == "Biosphärenreservat"))
+  filter(!(DESIG %in% c("Biosphärenreservat", "UNESCO-MAB Biosphere Reserve"))) %>%
+  mutate(overlap_area = as.numeric(st_area(.)))
+
+
 
 # Create area-weighted management score per grid cell
 management_weighted <- intersected_filtered %>%
@@ -239,9 +242,6 @@ grid_cov_area <- grid_joined %>%
     cov_frac = as.numeric(pa_area_clean / cell_area)
   )
 
-# STEP 5: Add area of each PA fragment
-intersected_filtered <- intersected_filtered %>%
-  mutate(overlap_area = as.numeric(st_area(.)))
 
 # Optional: Save for checking
 st_write(intersected_filtered, "./data/Protected-areas/intersected_filtered.gpkg")
@@ -256,29 +256,46 @@ st_write(intersected_filtered, "./data/Protected-areas/intersected_filtered.gpkg
 # and allows separating truly unprotected cells from those with undefined or unclear categories.
 # The final categorical label 'IUCN_CAT_final' reflects the dominant protection type in a cell.
 
-iucn_weighted <- intersected_filtered %>%
+priority_order <- tibble(
+  IUCN_CAT_numeric = c(1, 2, 8, 3, 4, 5, 6, 7, 9, 10, 11),
+  priority =        c(11,10, 9, 8, 7, 6, 5, 4, 3, 2, 1)
+)
+
+# Fläche pro Kategorie innerhalb jeder Zelle
+iucn_area_share <- intersected_filtered %>%
+  group_by(id, IUCN_CAT_numeric) %>%
+  summarise(area = sum(overlap_area, na.rm = TRUE), .groups = "drop") %>%
   group_by(id) %>%
-  summarise(
-    mean_weighted_iucn = sum(IUCN_CAT_numeric * overlap_area, na.rm = TRUE) / sum(overlap_area, na.rm = TRUE),
-    .groups = "drop"
-  ) %>%
   mutate(
-    IUCN_CAT_numeric_rounded = floor(mean_weighted_iucn),
-    IUCN_CAT_final = case_when(
-      mean_weighted_iucn >= 1 & mean_weighted_iucn < 2 ~ "Ia/Ib",
-      mean_weighted_iucn >= 2 & mean_weighted_iucn < 3 ~ "II",
-      mean_weighted_iucn >= 3 & mean_weighted_iucn < 4 ~ "III",
-      mean_weighted_iucn >= 4 & mean_weighted_iucn < 5 ~ "IV",
-      mean_weighted_iucn >= 5 & mean_weighted_iucn < 6 ~ "V",
-      mean_weighted_iucn >= 6 & mean_weighted_iucn < 7 ~ "Habitats Directive (Natura 2000)",
-      mean_weighted_iucn >= 7 & mean_weighted_iucn < 8 ~ "Birds Directive (Natura 2000)",
-      mean_weighted_iucn >= 8 & mean_weighted_iucn < 9 ~ "Biosphere Reserve (UNESCO)",
-      mean_weighted_iucn >= 9 & mean_weighted_iucn < 10 ~ "Biosphere Reserve (Zoned)",
-      mean_weighted_iucn >= 10 & mean_weighted_iucn < 11 ~ "Not Assigned/Applicable",
-      mean_weighted_iucn >= 11 ~ "Mixed/Undefined Protected",
-      TRUE ~ "Unprotected"
-    )
-  )
+    total_area = sum(area),
+    share = area / total_area
+  ) %>%
+  left_join(priority_order, by = "IUCN_CAT_numeric")
+
+# Auswahl der Kategorie mit höchstem Flächenanteil, bei Gleichstand: höchste Priorität
+iucn_dominant <- iucn_area_share %>%
+  group_by(id) %>%
+  filter(share == max(share)) %>%
+  arrange(id, desc(priority)) %>%
+  slice(1) %>%
+  ungroup()
+
+iucn_dominant <- iucn_dominant %>%
+  mutate(IUCN_CAT_final = case_when(
+    IUCN_CAT_numeric == 1 ~ "Ia/Ib",
+    IUCN_CAT_numeric == 2 ~ "II",
+    IUCN_CAT_numeric == 3 ~ "III",
+    IUCN_CAT_numeric == 4 ~ "IV",
+    IUCN_CAT_numeric == 5 ~ "V",
+    IUCN_CAT_numeric == 6 ~ "Habitats Directive (Natura 2000)",
+    IUCN_CAT_numeric == 7 ~ "Birds Directive (Natura 2000)",
+    IUCN_CAT_numeric == 8 ~ "Biosphere Reserve (Core Zone)",
+    IUCN_CAT_numeric == 9 ~ "Biosphere Reserve (Buffer/Transition)",
+    IUCN_CAT_numeric == 10 ~ "Not Assigned/Applicable",
+    IUCN_CAT_numeric == 11 ~ "Mixed/Undefined Protected",
+    TRUE ~ "Unprotected"
+  ))
+
 # For each grid cell (id), we calculate an area-weighted protection value that reflects the 
 # average level of legal protection based on the overlapping protected area fragments.
 # Each protected area is first translated into a numeric IUCN score (1 = strictest, 9 = least defined).
@@ -303,7 +320,7 @@ dominant_year <- intersected_filtered %>%
 # ===========================
 # STEP 7: Final Join + Output
 # ===========================
-iucn_weighted_df_clean <- iucn_weighted %>%
+iucn_weighted_df_clean <- iucn_dominant %>%
   st_set_geometry(NULL) %>%
   left_join(
     dominant_year %>% st_set_geometry(NULL) %>% select(id, dominant_status_yr = STATUS_YR),
@@ -350,7 +367,7 @@ intersected_filtered %>%
   arrange(desc(overlap_area)) %>%
   View()
 
-intersected %>%
+intersected_filtered %>%
   st_set_geometry(NULL) %>%
   count(DESIG, sort = TRUE)
 
@@ -520,4 +537,140 @@ protected_area_pie_chart <- ggplot(area_summary, aes(x = "", y = total_area, fil
 ggsave("./figures/protected_area_pie_chart.png", 
        plot = protected_area_pie_chart, 
        width = 10, height = 8, dpi = 200)
+
+# Plot of weighted IUCN categories per grid cell--------------------
+
+# Join IUCN final category to dissolved PA geometries per Zelle
+intersected_union_plot <- intersected_union %>%
+  left_join(
+    iucn_dominant %>% st_set_geometry(NULL) %>% select(id, IUCN_CAT_final),
+    by = "id"
+  ) %>%
+  mutate(
+    IUCN_CAT_final = factor(IUCN_CAT_final, levels = c(
+      "Ia/Ib", "II", "III", "IV", "V",
+      "Biosphere Reserve (Core Zone)",
+      "Biosphere Reserve (Buffer/Transition)",
+      "Habitats Directive (Natura 2000)",
+      "Birds Directive (Natura 2000)",
+      "Not Assigned/Applicable",
+      "Mixed/Undefined Protected"
+    ))
+  )
+
+
+
+
+iucn_palette <- c(
+  "Ia/Ib" = "#00441b",   # sehr dunkles grün
+  "II"    = "#1b9e77",   # türkisgrün
+  "III"   = "#d95f02",   # orangebraun
+  "IV"    = "#e7298a",   # magenta
+  "V"     = "#7570b3",   # violettblau
+  
+  "Biosphere Reserve (Core Zone)"         = "#006d2c",   # dunkles grün
+  "Biosphere Reserve (Buffer/Transition)" = "#66a61e",   # moosgrün
+  
+  "Habitats Directive (Natura 2000)"      = "#bb7f0e",   # braunocker
+  "Birds Directive (Natura 2000)"         = "#e6ab02",   # senfgelb
+  
+  "Not Assigned/Applicable"               = "#999999",   # grau
+  "Mixed/Undefined Protected"             = "#666666"    # dunkelgrau
+)
+
+
+table(intersected_filtered_plot$IUCN_CAT_final, useNA = "always")
+
+
+st_crs(intersected_filtered) == st_crs(grid_joined)
+
+# Plot 
+plotiucn <- ggplot() +
+  geom_sf(data = grid_joined, fill = NA, color = "grey80", linewidth = 0.2) +
+  geom_sf(data = intersected_union_plot, aes(fill = IUCN_CAT_final), color = NA, alpha = 0.85) +
+  scale_fill_manual(values = iucn_palette, na.translate = FALSE, name = "Area-weighted Protection Design") +
+  theme_classic(base_family = "roboto_condensed") +
+  theme(
+    panel.grid = element_blank(),
+    text = element_text(family = "roboto_condensed"),
+    legend.title = element_text(size = 85),
+    legend.text = element_text(size = 80),
+    axis.title.x = element_text(size = 85),
+    axis.title.y = element_text(size = 85),
+    axis.text = element_text(size = 80),
+    panel.background = element_rect(fill = "transparent", color = NA),
+    plot.background = element_rect(fill = "transparent", color = NA),
+    legend.background = element_rect(fill = "transparent", color = NA),
+    legend.box.background = element_rect(fill = "transparent", color = NA)
+  )
+
+plotiucn
+
+
+
+# Saving
+ggsave(
+  filename = "./figures/weightedIUCN-cat.png",
+  plot = plotiucn,
+  width = 50,
+  height = 50,
+  units = "cm",
+  dpi = 300
+)
+
+
+# Plot for management status ---------------
+
+plot_df <- intersected_union %>%
+  left_join(management_weighted %>% st_set_geometry(NULL), by = "id")
+
+management <- ggplot() +
+  geom_sf(data = grid_joined, fill = "grey90", color = "grey40", linewidth = 0.2) +
+  geom_sf(data = plot_df, aes(fill = mean_mgmt), color = NA) +
+  scale_fill_gradient(
+    name = "Probortion of managed PA's",
+    low = "#1d8348", high = "#7dcea0",
+    na.value = "grey90"
+  ) +
+  theme_classic(base_family = "roboto_condensed") +
+  theme(
+    panel.grid = element_blank(),
+    text = element_text(family = "roboto_condensed"),
+    legend.title = element_text(size = 85),
+    legend.text = element_text(size = 80),
+    axis.title.x = element_text(size = 85),
+    axis.title.y = element_text(size = 85),
+    axis.text = element_text(size = 80)
+  )
+management
+
+# Saving
+ggsave(
+  filename = "./figures/weighted-management.png",
+  plot = management,
+  width = 50,
+  height = 50,
+  units = "cm",
+  dpi = 300
+)
+
+
+ggplot() +
+  # Gridcells
+  geom_sf(data = grid_joined, fill = NA, color = "grey30", size = 0.2, alpha= 0.3) +
+  
+  # PAs: color according to management (if a cell if >50% of the cell is covered by PAs with management, it is colored green, otherwise red)
+  geom_sf(data = intersected_filtered, aes(fill = has_management), alpha = 0.7, color = NA) +
+  
+  # colors and layout
+  scale_fill_manual(
+    values = c(`TRUE` = "#5bc38b", `FALSE` = "#c35b64"),
+    name = "Management"
+  ) +
+  theme_minimal() +
+  theme(
+    legend.position = "right",
+    panel.grid = element_blank()
+  )
+
 
