@@ -228,9 +228,11 @@ smon_deltasop <- smon_filtered %>%
   group_by(id) %>%
   summarise(
     SOP_T1 = sum(OP_T1, na.rm = TRUE),
-    SOP_T2 = sum(OP_T3, na.rm = TRUE),  # assuming OP_T3 is your final time step (1997–2017)
-    delta_SOP = SOP_T2 - SOP_T1
+    SOP_T2 = sum(OP_T3, na.rm = TRUE),
+    delta_SOP = SOP_T2 - SOP_T1,
+    rel_loss = ifelse(SOP_T1 > 0, (delta_SOP / SOP_T1) * 100, NA)
   )
+
 
 # Combine with grid geometries
 grid_delta <- grid_sf_coverage_all %>%
@@ -270,6 +272,46 @@ delta_plot <- ggplot() +
 ggsave(
   filename = "./figures/delta_sop_grid_map.png",
   plot = delta_plot,
+  width = 20,
+  height = 25,
+  dpi = 200,
+  bg = "white"
+)
+
+delta_plot_rel <- ggplot() +
+  geom_sf(data = grid_delta, aes(fill = rel_loss), color = "gray20") +
+  
+  scale_fill_gradientn(
+    colors = rev(dichromat::colorschemes$LightBluetoDarkBlue.7),
+    limits = c(-50, 0),
+    name = "Relative\nloss [%]",
+    na.value = "#b3afa7",
+    guide = guide_colorbar(
+      direction = "vertical",
+      barheight = unit(20, "cm"),
+      barwidth = unit(1, "cm"),
+      title.vjust = 4
+    )
+  ) +
+  
+  geom_sf(data = de_states_proj, fill = NA, color = "grey30", linewidth = 1) +
+  
+  coord_sf(datum = NA, expand = FALSE) +
+  
+  theme_minimal(base_family = "Roboto Condensed", base_size = 13) +
+  theme(
+    text = element_text(family = "roboto_condensed"),
+    legend.title = element_text(size = 90, lineheight = 0.4),
+    legend.text  = element_text(size = 80, lineheight = 0.1),
+    axis.title.x = element_blank(),
+    axis.title.y = element_text(size = 90),
+    axis.text.x  = element_text(size = 80),
+    axis.text.y  = element_text(size = 74)
+  )
+
+ggsave(
+  filename = "./figures/rel_delta_sop_grid_map.png",
+  plot = delta_plot_rel,
   width = 20,
   height = 25,
   dpi = 200,
