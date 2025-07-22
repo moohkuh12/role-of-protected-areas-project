@@ -220,3 +220,117 @@ sr_plot2 <- ggplot() +
   )
 
 ggsave("./figures/sopgrid_card_t3.png", plot = sr_plot2, width = 10, height = 8, dpi = 300)
+
+
+# Delta SOPcell to T2 - Panel 2 -----------------------------
+
+smon_deltasop <- smon_filtered %>%
+  group_by(id) %>%
+  summarise(
+    SOP_T1 = sum(OP_T1, na.rm = TRUE),
+    SOP_T2 = sum(OP_T3, na.rm = TRUE),  # assuming OP_T3 is your final time step (1997–2017)
+    delta_SOP = SOP_T2 - SOP_T1
+  )
+
+# Combine with grid geometries
+grid_delta <- grid_sf_coverage_all %>%
+  left_join(smon_deltasop, by = "id")
+
+
+# Plot the delta SOP as a heatmap
+delta_plot <- ggplot() +
+  geom_sf(data = grid_delta, aes(fill = delta_SOP), color = "gray20") +
+  
+  scale_fill_gradientn(colors = rev(dichromat::colorschemes$LightBluetoDarkBlue.7),
+    name = "Δ Summed\noccurrence\nprobability",
+    guide = guide_colorbar(
+      direction = "vertical",
+      barheight = unit(20, "cm"),
+      barwidth = unit(1, "cm"),
+      title.vjust = 4
+    ),
+    na.value = "#b3afa7"
+  ) +
+  
+  geom_sf(data = de_states_proj, fill = NA, color = "grey30", linewidth = 1) +
+  
+  coord_sf(datum = NA, expand = FALSE) +
+  
+  theme_minimal(base_family = "Roboto Condensed", base_size = 13) +
+  theme(
+    text = element_text(family = "roboto_condensed"),
+    legend.title = element_text(size = 90, lineheight = 0.4),
+    legend.text  = element_text(size = 80, lineheight = 0.1),
+    axis.title.x = element_blank(),
+    axis.title.y = element_text(size = 90),
+    axis.text.x  = element_text(size = 80),
+    axis.text.y  = element_text(size = 74)
+  )
+
+ggsave(
+  filename = "./figures/delta_sop_grid_map.png",
+  plot = delta_plot,
+  width = 20,
+  height = 25,
+  dpi = 200,
+  bg = "white"
+)
+
+
+# Panel 4 ---------------------------
+# Join protection_cat to delta grid
+grid_delta_prot <- grid_delta %>%
+  left_join(
+    grid_plot_proj %>%
+      st_drop_geometry() %>%
+      select(id, protection_cat),
+    by = "id"
+  )
+
+
+
+delta_prot_overlay_frac <- ggplot() +
+  # Background: delta SOP
+  geom_sf(data = grid_delta_prot, aes(fill = delta_SOP), color = "grey30") +
+  
+  # Overlay: fill with semi-transparent yellow depending on cov_frac
+  geom_sf(
+    data = grid_delta_prot %>% filter(!is.na(cov_frac)),
+    aes(alpha = cov_frac),
+    fill = "gold",
+    color = NA
+  ) +
+  
+  scale_alpha_continuous(range = c(0, 0.5), guide = "none") +  # optional legend
+  scale_fill_gradientn(
+    colors = rev(dichromat::colorschemes$LightBluetoDarkBlue.7),
+    name = "Δ Summed\noccurrence\nprobability",
+    guide = guide_colorbar(
+      direction = "vertical",
+      barheight = unit(20, "cm"),
+      barwidth = unit(1, "cm"),
+      title.vjust = 4
+    ), na.value = "#b3afa7"
+  ) +
+  geom_sf(data = de_states_proj, fill = NA, color = "grey30", linewidth = 1) +
+  coord_sf(datum = NA, expand = FALSE) +
+  theme_minimal(base_family = "Roboto Condensed", base_size = 13) +
+  theme(
+    text = element_text(family = "roboto_condensed"),
+    legend.title = element_text(size = 90, lineheight = 0.4),
+    legend.text  = element_text(size = 80, lineheight = 0.1),
+    axis.title.x = element_blank(),
+    axis.title.y = element_text(size = 90),
+    axis.text.x  = element_text(size = 80),
+    axis.text.y  = element_text(size = 74)
+  )
+
+ggsave(
+  filename = "./figures/delta_sop_Protection_map.png",
+  plot = delta_prot_overlay_frac,
+  width = 20,
+  height = 25,
+  dpi = 200,
+  bg = "white"
+)
+
