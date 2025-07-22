@@ -19,28 +19,39 @@ rm(sMon_wide)
 
 
 # Load the adapted euforplants data
-euforplants <- read.csv("./data/landcover_analysis/euforplants_summary_new.csv")
-euforplants2 <- read.csv("./data/landcover_analysis/euforplants_summary_new_montane2506.csv")
+#euforplants <- read.csv("./data/landcover_analysis/euforplants_summary_new.csv")
+#euforplants2 <- read.csv("./data/landcover_analysis/euforplants_summary_new_montane2506.csv")
 
 # Load trait df or create it
 traits_df <- read_csv("./data/sMon/sMon_traits.csv")
 
 traits_df <- smon_filtered%>%
-  select(TaxonName, main_group, EIVEres.M, EIVEres.M.nw3,EIVEres.N, EIVEres.N.nw3, EIVEres.L, EIVEres.L.nw3, EIVEres.T, EIVEres.T.nw3, EIVEres.R, EIVEres.R.nw3, Family, PlantGrowthForm, Woodiness, LeafType, LeafPhenology ) %>%
+  select(TaxonName, main_group, main_group2, EIVEres.M, EIVEres.M.nw3,EIVEres.N, EIVEres.N.nw3, EIVEres.L, EIVEres.L.nw3, EIVEres.T, EIVEres.T.nw3, EIVEres.R, EIVEres.R.nw3, Family, PlantGrowthForm, Woodiness, LeafType, LeafPhenology ) %>%
   distinct()
 
+# Protection_cat will be our used protection defonition (besides the other threshholds)
+# Define protection categories based on cov_frac
+smon_filtered<- smon_filtered%>%
+  mutate(protection_cat = case_when(
+    cov_frac <= 0.005 ~ "not protected",
+    cov_frac < 0.9    ~ "part protected",
+    TRUE              ~ "protected"
+  )) %>%
+  mutate(protection_cat = factor(protection_cat, levels = c("not protected", "part protected", "protected")))
+
+
 # add new euforplants traits
-traits_df<- traits_df %>%
-  select(-main_group) %>%
-  left_join(
-    euforplants %>% select(wcvp_name, main_group),
-    by = c("TaxonName" = "wcvp_name")
-  )
-traits_df<- traits_df %>%
-  left_join(
-    euforplants2 %>% select(wcvp_name, main_group2),
-    by = c("TaxonName" = "wcvp_name")
-  )
+#traits_df<- traits_df %>%
+ # select(-main_group) %>%
+ # left_join(
+#    euforplants %>% select(wcvp_name, main_group),
+ #   by = c("TaxonName" = "wcvp_name")
+ # )
+#traits_df<- traits_df %>%
+#  left_join(
+ #   euforplants2 %>% select(wcvp_name, main_group2),
+ #   by = c("TaxonName" = "wcvp_name")
+ # )
 
 ###############################
 ###############################
@@ -51,26 +62,50 @@ traits_df<- traits_df %>%
 # Aggregate data by protection status per species 
 # summary general --------------------------
 # will be our main dataframe for the models 
+total_cells_per_species <- smon_filtered %>%
+  filter(OP_T1 > 0) %>%
+  group_by(TaxonName) %>%
+  summarise(total_cells = n(), .groups = "drop")
+
 summary_general <- smon_filtered %>%
   filter(OP_T1 > 0) %>%
   mutate(occ_change = OP_T3 - OP_T1) %>%
   group_by(TaxonName, protection_cat) %>%
-  summarise( # mean_occ_change and logratio (of SOP) will be our main predictors in the models
+  summarise(
     SOP_T1 = sum(OP_T1, na.rm = TRUE),
     SOP_T3 = sum(OP_T3, na.rm = TRUE),
     mean_occ_change = mean(occ_change, na.rm = TRUE),
-    mean_OP_T1 = mean(OP_T1, na.rm = TRUE),  # this is our covariate - the initial mean occurence probability
+    mean_OP_T1 = mean(OP_T1, na.rm = TRUE),
     n_cells = n(),
-    protected_cells_binary = sum(protection_cat == "protected"),
-    .groups = "drop"  # can be used alternatively to ungroup()
+    .groups = "drop"
   ) %>%
-  mutate( # this chunk calculates the metrics on the basis of the summed occurence probabilities per species and protection level per cell
+  left_join(total_cells_per_species, by = "TaxonName") %>%
+  mutate(
+    delta_SOP = SOP_T3 - SOP_T1,
+    rel_change = (SOP_T3 - SOP_T1) / SOP_T1 * 100,
+    logratio = log((SOP_T3 + 0.01)/(SOP_T1 + 0.01))
+  ) %>%
+  ungroup()
+
+summary_range_protected <- smon_filtered %>%
+  filter(OP_T1 > 0) %>%
+  mutate(occ_change = OP_T3 - OP_T1,
+         protected_binary = protection_cat == "protected") %>%
+  group_by(TaxonName) %>%
+  summarise(
+    SOP_T1 = sum(OP_T1, na.rm = TRUE),
+    SOP_T3 = sum(OP_T3, na.rm = TRUE),
+    mean_occ_change = mean(occ_change, na.rm = TRUE),
+    mean_OP_T1 = mean(OP_T1, na.rm = TRUE),
+    n_cells = n(),
+    protected_cells_binary = sum(protected_binary),
     delta_SOP = SOP_T3 - SOP_T1,
     rel_change = (SOP_T3 - SOP_T1) / SOP_T1 * 100,
     logratio = log((SOP_T3 + 0.01)/(SOP_T1 + 0.01)),
-    percent_range_protected = protected_cells_binary / n_cells
-  )%>%
-  ungroup()
+    percent_range_protected = protected_cells_binary / n_cells,
+    .groups = "drop"
+  )
+
 
 # These are the same summarys for the other thresholds - these can be used for testing other threshholds for protection 
 # sensitivity analysis ------------------------
