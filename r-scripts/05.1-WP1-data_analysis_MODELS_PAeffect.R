@@ -10,8 +10,6 @@ source("./r-scripts/00-preamble.R")
 #sMon <- read_csv("./data/sMon/sMon_long.csv", col_names = TRUE)
 
 # Long format of sMon data 
-# NOTE: here the "old" classification for main_group is still used. tests with main_goup aka forest affiliation
-# use the new euforplants csv and add it to the traits_df
 sMon_wide <- read_csv("./data/sMon/sMon_wide_220725.csv")
 smon_filtered <- sMon_wide %>%
   filter(urban_class != "urban")
@@ -71,11 +69,11 @@ summary_general <- smon_filtered %>%
   filter(OP_T1 > 0) %>%
   mutate(occ_change = OP_T3 - OP_T1) %>%
   group_by(TaxonName, protection_cat) %>%
-  summarise(
+  summarise( # mean_occ_change and logratio (of SOP) will be our main predictors in the models
     SOP_T1 = sum(OP_T1, na.rm = TRUE),
     SOP_T3 = sum(OP_T3, na.rm = TRUE),
     mean_occ_change = mean(occ_change, na.rm = TRUE),
-    mean_OP_T1 = mean(OP_T1, na.rm = TRUE),
+    mean_OP_T1 = mean(OP_T1, na.rm = TRUE), # this is our covariate - the initial mean occurence probability
     n_cells = n(),
     .groups = "drop"
   ) %>%
