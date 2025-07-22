@@ -179,6 +179,7 @@ species_smon <- bind_rows(
   )
 ) %>% distinct()
 
+
 # (Optional) Step 15: Save the combined SMON species names for reference.
 # write.csv(species_smon, "./data/TaxonHarm/species_names_smon.csv", row.names = FALSE)
 

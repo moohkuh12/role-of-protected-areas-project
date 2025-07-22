@@ -347,7 +347,7 @@ euforplants %>%
 
 
 # 5. Speichern (optional)
-write.csv(euforplants_summary, "./data/landcover_analysis/euforplants_summary.csv", row.names = FALSE)
+write.csv(euforplants, "./data/landcover_analysis/euforplants_summary.csv", row.names = FALSE)
 euforplants <- read.csv("./data/landcover_analysis/euforplants_summary.csv", stringsAsFactors = FALSE)
 
 # New Categories for the EuForPlants dataset----
@@ -391,7 +391,7 @@ euforplants <- euforplants %>%
       "Unclassified or exceptional case – manual review recommended."
   ))
 write.csv(euforplants1, "./data/landcover_analysis/euforplants_summary_new.csv", row.names = FALSE)
-write.csv(euforplants2, "./data/landcover_analysis/euforplants_summary_new_montane2506.csv", row.names = FALSE)
+write.csv(euforplants2, "./data/landcover_analysis/euforplants_summary_new_montane210706.csv", row.names = FALSE)
 
 
 

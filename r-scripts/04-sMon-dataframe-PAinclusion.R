@@ -17,7 +17,7 @@
 # =============================================================
 
 # 0) Load packages ----
-source("./r_scripts/00-preamble.R")
+source("./r-scripts/00-preamble.R")
 
 
 # 1) Load protected areas and grid data ----
@@ -71,31 +71,56 @@ cat("Number of unique species in TaxonName:", unique_species_count, "\n")
 # 5.1) Save final dataset ----
 
 # Save merged dataset as CSV
-write.csv(merged_sMon_ids, "./data/sMon/sMon_long_090425.csv", row.names = FALSE)
+write.csv(merged_sMon_ids, "./data/sMon/sMon_long_210725.csv", row.names = FALSE)
 write.csv(merged_sMon_ids_t2, "./data/sMon/sMon_long_t2_220525.csv", row.names = FALSE)
 merged_sMon_ids <- read.csv("./data/sMon/sMon_long_090425.csv")
 # Save as spatial geopackage (preserving geometry)
-st_write(merged_sMon_ids, "./data/sMon/sMon_long_090425.gpkg")
+st_write(merged_sMon_ids, "./data/sMon/sMon_long_210725.gpkg")
 st_write(merged_sMon_ids_t2, "./data/sMon/sMon_long_t2_220525.gpkg")
 problems(merged_sMon_ids)
 
-merged_sMon_ids <- st_read("./data/sMon/sMon_long_090425.gpkg") #rather use this one
-rm(merged_sMon_ids)
+merged_sMon_ids <- st_read("./data/sMon/sMon_long_210725.gpkg") #rather use this one
+
 
 duplikate <- merged_sMon_ids %>%
   count(id, TaxonName, Period) %>%
   filter(n > 1) #Rhinantus serotinus is doubled
+duplikate_df <- merged_sMon_ids %>%
+  semi_join(             # Zeigt nur die Originaldaten mit doppelten Kombinationen
+    merged_sMon_ids %>%
+      count(id, TaxonName, Period) %>%
+      filter(n > 1),
+    by = c("id", "TaxonName", "Period")
+  ) %>%
+  arrange(TaxonName, id, Period)
 
+# Filter out Rhinanthus serotinus duplicates
+merged_sMon_ids_filtered <- merged_sMon_ids %>%
+  group_by(id, Period) %>%
+  filter(TaxonName != "Rhinanthus serotinus") %>%
+  bind_rows(
+    merged_sMon_ids %>%
+      filter(TaxonName == "Rhinanthus serotinus") %>%
+      group_by(id, Period) %>%
+      slice_max(OP, n = 1, with_ties = FALSE)
+  ) %>%
+  ungroup()
+
+test_df <- merged_sMon_ids_filtered %>%
+      count(id, TaxonName, Period) %>%
+      filter(TaxonName == "Rhinanthus serotinus"
+  ) %>%
+  arrange(TaxonName, id, Period)
 
 # Convert into wide Format for analysis
-sMon_wide <- merged_sMon_ids %>%
+sMon_wide <- merged_sMon_ids_filtered %>%
   pivot_wider(
     names_from = Timestep,  
     values_from = c(OP, OP_sd, Period),  
     names_prefix = "T",  
-    id_cols = c(id, TaxonName,wcvp_name, MTB_Q, Longitude, Latitude,  geom, IUCN_CAT_final, 
+    id_cols = c(id, TaxonName,wcvp_name, MTB_Q, Longitude, Latitude,  geom, IUCN_CAT_final, priority, mean_mgmt, dominant_management,
                 #WDPAID, DESIG_ENG, NAME,IUCN_CAT_numeric,GIS_M_AREA, GIS_T_AREA,  GIS_AREA, REP_AREA, overlap_area, 
-                cov_frac, protection90, protection80, protection70, protection60, protection50,urban_area, urban_prop, urban_class, forest_prop)  
+                cov_frac, dominant_status_yr, protection90, protection80, protection70, protection60, protection50,urban_area, urban_prop, urban_class, forest_prop)  
   )
 
 sMon_widet2 <- merged_sMon_ids_t2 %>%
@@ -109,12 +134,12 @@ sMon_widet2 <- merged_sMon_ids_t2 %>%
   )
 # EuForPlants data inclusion -----------
 
-euforplants_summary <- read.csv("./data/landcover_analysis/euforplants_summary_new.csv")
+euforplants_summary <- read.csv("./data/landcover_analysis/euforplants_summary.csv")
 
 # Merge with euforplants data
 # Select only necessary columns for the join
 main_group_info <- euforplants_summary %>%
-  select(wcvp_name, main_group)
+  select(wcvp_name, main_group, main_group2)
 
 # Inner join: keep only rows that exist in both datasets
 smon_wide_joined <- sMon_wide %>%
@@ -122,7 +147,7 @@ smon_wide_joined <- sMon_wide %>%
 
 # Reorder columns: put main_group at position 3
 smon_wide_joined <- smon_wide_joined %>%
-  select(1:2, main_group, everything())
+  select(1:2, main_group, main_group2, everything())
 
 
 #for t2
@@ -178,8 +203,10 @@ no_eive_names <- smon_wide_joined %>%
 # View the species without EIVE data
 View(no_eive_names)
 
+write_csv(smon_wide_joined, "./data/sMon/smon_df210725.csv")
+
 # TRY data inclusion -----------
-smon_wide_joined <- st_read("./data/sMon/sMon_wide_050525.gpkg")
+smon_wide_joined1 <- st_read("./data/sMon/sMon_df210725.csv")
 try_data <- read.csv("./data/TaxonHarm/rl_wcvp_try.csv")
 # Select only relevant columns
 try_data <- try_data[, c(3, 5:21)]
@@ -204,10 +231,10 @@ smon_wide_joined %>%
   )
 
 # Save wide format as CSV
-write_csv(smon_wide_joined, "./data/sMon/sMon_wide_100625.csv")
-sMon_wide_joined <- read_csv("./data/sMon/sMon_wide_100625.csv")
+write_csv(smon_wide_joined, "./data/sMon/sMon_wide_220725.csv")
+sMon_wide_joined <- read_csv("./data/sMon/sMon_wide_220725.csv")
 # Save as spatial geopackage (preserving geometry)
-st_write(smon_wide_joined, "./data/sMon/sMon_wide_100625.gpkg")
+st_write(smon_wide_joined, "./data/sMon/sMon_wide_220725.gpkg")
 
 
 

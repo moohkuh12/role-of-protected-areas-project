@@ -89,6 +89,14 @@ merged_sMon <- merged_data %>%
 
 # Load this File to avoid running the previous code again
 merged_sMon <- read.csv("./data/sMon/red_listed_sMon_occprobs020425.csv")
+duplikate_df <- merged_sMon %>%
+  semi_join(             # Zeigt nur die Originaldaten mit doppelten Kombinationen
+    merged_sMon%>%
+      count(MTB_Q, TaxonName, Period) %>%
+      filter(n > 1),
+    by = c("MTB_Q", "TaxonName", "Period")
+  ) %>%
+  arrange(TaxonName, MTB_Q, Period)
 
 unique_species_count <- n_distinct(merged_sMon$TaxonName) #863 species
 
