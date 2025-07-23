@@ -18,9 +18,9 @@ dichromat_palette <- c("#FFFFFF", "#CCFDFF" ,"#99F8FF" ,"#66F0FF" ,"#33E4FF" ,"#
 grid_sf_coverage_all <- st_read("./data/Protected-areas/grid_sf_protectionstatus.gpkg")
 
 # Extract unique protection status per grid cell
-protection_status <- smon_filtered %>%
+protection_status <- smon_filtered_updated %>%
   distinct(id, .keep_all = TRUE) %>%
-  select(id, protection_cat)
+  select(id, protection_cat, mean_mgmt_new)
 
 # Join with grid geometries
 grid_plot <- grid_sf_coverage_all %>%
@@ -423,3 +423,60 @@ ggsave(
   dpi = 200,
   bg = "white"
 )
+
+# External Test: Management --------------
+
+grid_filtered <- grid_plot_proj %>%
+  filter(cov_frac > 0.5)
+
+management_map <- ggplot() +
+  geom_sf(
+    data = grid_filtered,
+    aes(fill = mean_mgmt_new),
+    color = "grey20",
+    size = 0.1,
+    alpha = 0.9
+  ) +
+  geom_sf(
+    data = de_states_proj,
+    fill = NA,
+    color = "grey30",
+    linewidth = 1
+  ) +
+  scale_fill_gradientn(
+    colors = dichromat::colorschemes$LightBluetoDarkBlue.7,
+    na.value = "grey50",  
+    name = "Management score",
+    limits = c(0, 1),
+    guide = guide_colorbar(
+      direction = "vertical",
+      barheight = unit(20, "cm"),
+      barwidth = unit(1, "cm"),
+      title.vjust = 3
+    )
+  ) +
+  coord_sf(datum = NA, expand = FALSE) +
+  theme_classic(base_family = "Roboto Condensed", base_size = 13) +
+  theme(
+    plot.margin = unit(c(1,1,1,1), "cm"),
+    text = element_text(family = "roboto_condensed"),
+    legend.title = element_text(size = 90),
+    legend.text = element_text(size = 80),
+    legend.spacing = unit(0.2, "cm")
+  )
+
+# Show the map
+management_map
+
+# Save the management map to a file
+ggsave(
+  filename = "./figures/management_gradient_protected_only.png",
+  plot = management_map,
+  width = 20,
+  height = 25,
+  dpi = 200,
+  bg = "white"
+)
+
+
+

@@ -9,6 +9,50 @@ source("./r-scripts/00-preamble.R")
 
 intersected <- st_read("./data/Protected-areas/Intermediate/intersected_protected_areas.shp")
 
+# Assign numeric protection categories and flag zones with active management------------------------
+
+# Each protected area fragment is assigned a numeric code that reflects its legal protection level.
+# Categories Ia–V follow the official IUCN classification (1–5).
+# Natura 2000 areas are split into Habitats Directive (6) and Birds Directive (7).
+# UNESCO biosphere reserves receive category 8.
+# National biosphere zones (core, buffer, transition) receive category 9.
+# Not Assigned or Not Applicable categories are grouped as 10.
+# All other or unexpected types are assigned category 11 (fallback).
+# Additionally, a binary flag 'has_management' indicates whether the area is under some form
+# of active or regulated management (e.g. Natura 2000, biosphere buffer zones, IUCN IV–V).
+
+# Large placeholder polygons for entire biosphere reserves (DESIG == "Biosphärenreservat")
+# are excluded from the analysis to avoid overweighting uninformative spatial hulls.
+
+intersected_filtered <- intersected %>%
+  mutate(
+    # IUCN category classification (differentiated for biosphere core zone)
+    IUCN_CAT_numeric = case_when(
+      IUCN_CAT %in% c("Ia", "Ib") ~ 1,
+      IUCN_CAT == "II" ~ 2,
+      IUCN_CAT == "III" ~ 3,
+      IUCN_CAT == "IV" ~ 4,
+      IUCN_CAT == "V" ~ 5,
+      IUCN_CAT == "Not Reported" & DESIG == "Special Areas of Conservation (Habitats Directive)" ~ 6,
+      IUCN_CAT == "Not Reported" & DESIG == "Special Protection Area (Birds Directive)" ~ 7,
+      DESIG == "Biosphärenreservat - Kernzone" ~ 8,
+      DESIG %in% c("Biosphärenreservat - Pflegezone", "Biosphärenreservat - Entwicklungszone") ~ 9,
+      IUCN_CAT %in% c("Not Applicable", "Not Assigned") ~ 10,
+      TRUE ~ 11
+    ),
+    
+    # Flag for management
+    has_management = case_when(
+      IUCN_CAT_numeric %in% c(4, 5, 6, 7) ~ TRUE,
+      DESIG %in% c("Biosphärenreservat - Pflegezone", "Biosphärenreservat - Entwicklungszone") ~ TRUE,
+      TRUE ~ FALSE
+    )
+  ) %>%
+  
+  # Exclude large uninformative parent Biosphärenreservat hulls
+  filter(!(DESIG %in% c("Biosphärenreservat", "UNESCO-MAB Biosphere Reserve"))) %>%
+  mutate(overlap_area = as.numeric(st_area(.)))
+
 intersected_mgmt <- intersected_filtered %>%
   mutate(
     # Assign a continuous management score (0–1) to each protected area fragment.
@@ -75,7 +119,7 @@ new_management <- intersected_mgmt %>%
 
 # Save the new management index to a GeoPackage
 st_write(new_management, "./data/Protected-areas/new_management_index.gpkg", delete_layer = TRUE)
-
+st
 # Join the new management index with the existing filtered data
 smon_filtered_updated <- smon_filtered %>%
   select(-mean_mgmt, -dominant_management) %>%
