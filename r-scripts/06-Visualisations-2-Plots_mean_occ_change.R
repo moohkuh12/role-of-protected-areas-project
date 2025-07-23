@@ -307,13 +307,6 @@ for (model_name in names(model_list)) {
       alpha = 0.7
     ) +
     
-    geom_jitter(
-      aes(color = protection_cat),
-      width = 0.02,
-      size = 1.5,
-      alpha = 0.4
-    ) +
-    
     labs(
       title = paste("Protection threshold:", substr(protection_var, 11, 12), "%"),
       x = protection_var,
