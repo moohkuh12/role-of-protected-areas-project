@@ -183,7 +183,7 @@ summary_prot50 <- smon_filtered %>%
     logratio = log((SOP_T3 + 0.01)/(SOP_T1 + 0.01))
   )
 
-# Linear mixed effect models - mean_occ_change --------------------------
+# 1. Linear mixed effect models - mean_occ_change --------------------------
 
 # Linear mixed model
 m1 <- lmer(data = summary_general,

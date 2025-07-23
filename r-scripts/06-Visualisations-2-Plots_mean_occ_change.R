@@ -1,7 +1,7 @@
 # Load setup and libraries
 source("./r_scripts/00-preamble.R")
 
-# This is the corresponding plot script to the 06-WP1-data_analysis_MODELS_PAeffects.R script.
+# This is the corresponding plot script to the 05-WP1-data_analysis_MODELS_PAeffects.R script.
 # The names of the models are:
 # 1 General models: 
 # m1 - mean_occ_change ~ protection_cat
@@ -133,13 +133,13 @@ p1 <- ggplot(summary_general, aes(x = protection_cat, y = mean_occ_change*100)) 
   geom_hline(yintercept = 0, linetype = "dashed", color = "grey30", linewidth = 0.8) + 
   # Violinplots
   geom_half_violin(
-    data = summary_persist,
+    data = summary_general,
     aes(x = protection_cat, y = mean_occ_change*100, fill = protection_cat),
-    side = "l", alpha = 0.35, color = NA, position = position_nudge(x = -0.05), scale= "count"
+    side = "l", alpha = 0.45, color = NA, position = position_nudge(x = -0.05), scale= "count"
   ) +
   # slimmer boxplots
   geom_boxplot(
-    data = summary_persist,
+    data = summary_general,
     aes(x = protection_cat, y = mean_occ_change*100, fill = protection_cat, color= protection_cat),
     width = 0.1,
     outlier.shape = NA,
@@ -147,16 +147,21 @@ p1 <- ggplot(summary_general, aes(x = protection_cat, y = mean_occ_change*100)) 
     position = position_nudge(x = 0.1),
     alpha = 0.7
   ) +
-  geom_jitter(aes(color = protection_cat), width  = 0.02, size   = 1.5,alpha  = 0.4) +
+ # geom_jitter(aes(color = protection_cat), width  = 0.02, size   = 1.5,alpha  = 0.4) +
   labs(
     x = "Protection status",
     y = NULL,
     color = "Protection",
     fill = "Protection"
   ) +
-  scale_fill_manual(values = acadia_custom) +
-  scale_color_manual(values = acadia_custom)+
-  # Theme
+  scale_fill_manual(#values = acadia_custom
+    values = c("not protected" = "#9cc1e2", "part protected" = "#6497b1", "protected" = "#005b96")) +
+  scale_color_manual(
+    values = c(
+      "not protected" = "#9ab0c3",   # deutlich dunkler als hellblau
+      "part protected" = "#0077AA",
+      "protected" = "#005B96")
+  )+
   theme_bw(base_family = "Roboto Condensed", base_size = 13) +
   theme(
     text             = element_text(family = "roboto_condensed"),
@@ -168,31 +173,61 @@ p1 <- ggplot(summary_general, aes(x = protection_cat, y = mean_occ_change*100)) 
     axis.text.y      = element_text(size = 64),
     legend.position  = "none"
   )
-
+p1
 # 2) right panel - Preds with SE
-p2 <- ggplot(preds, aes(x = x, y = predicted, color = x)) +
+p2 <- ggplot() +
+  # Modelestimates with Errorbars (from`preds`)
   geom_hline(yintercept = 0, linetype = "dashed", color = "grey30", linewidth = 0.8) + 
-  geom_point(size = 5, position = position_nudge(x = 0.12), alpha=0.7) +
-  geom_errorbar(aes(ymin = conf.low, ymax = conf.high),
-                width = 0.1,
-                linewidth = 1,
-                position = position_nudge(x = 0.12)) +
+  # datapoints (from `summary_general`)
+  geom_jitter(
+    data = summary_general,
+    aes(x = protection_cat, y = mean_occ_change * 100, color = protection_cat),
+    width = 0.09,
+    size = 1.5,
+    alpha = 0.15
+  ) +
+  # estimates and errorbars
+  geom_errorbar(
+    data = preds,
+    aes(x = x, ymin = conf.low, ymax = conf.high, color = "black"),
+    width = 0.03,
+    color="black",
+    linewidth = 1,
+  #  position = position_nudge(x = 0.12)
+  ) +
+  geom_point(
+    data = preds,
+    aes(x = x, y = predicted, color = "black"),
+    size = 2,
+    color= "black",
+  #  position = position_nudge(x = 0.12),
+    alpha = 0.7
+  ) +
+  
   coord_flip() +
   scale_y_continuous(expand = expansion(mult = c(0.1, 0.1))) +
-  scale_color_manual(values = acadia_custom) +
+  
+  scale_color_manual(
+    values = c(
+      "not protected" = "#9ab0c3",  
+      "part protected" = "#0077AA",
+      "protected" = "#005B96"
+    )
+  ) +
   labs(
     x = NULL,
     y = NULL
   ) +
   theme_bw(base_family = "Roboto Condensed", base_size = 13) +
   theme(
-    text  = element_text(family = "roboto_condensed"),
+    text = element_text(family = "roboto_condensed"),
     legend.position = "none",
     axis.text.y     = element_blank(), 
     axis.ticks.y    = element_blank(),
-    axis.title.x = element_text(size = 70),
-    axis.text.x = element_text(size = 70))
-
+    axis.title.x    = element_text(size = 70),
+    axis.text.x     = element_text(size = 70)
+  )
+p2
 
 # 3) both plots together
 
@@ -213,6 +248,13 @@ ggsave("./figures/occ_change_comparison010725.png",
 # m1.1 - m1.5 - mean_occ_change ~ protection_90 - 50 - Plots: ---------------------------------------------
 
 
+# Define custom color palette
+custom_colors <- c(
+  "not protected" = "#9cc1e2",
+  "part protected" = "#6497b1",
+  "protected" = "#005b96"
+)
+
 # List of models and protection variables
 model_list <- list(
   m1.1 = m1.1,
@@ -230,33 +272,31 @@ protection_vars <- c(
   m1.5 = "protection50"
 )
 
-# For-Loop to iterate over models and create plots
 for (model_name in names(model_list)) {
   
   m1 <- model_list[[model_name]]
   protection_var <- protection_vars[[model_name]]
   
-  # summary_protXX laden
   summary_prot <- get(paste0("summary_prot", substr(protection_var, 11, 12)))
   stopifnot(protection_var %in% names(summary_prot))
   
-  # Vorhersage berechnen
   preds <- ggpredict(m1, terms = protection_var)
   preds$predicted <- preds$predicted * 100
   preds$conf.low <- preds$conf.low * 100
   preds$conf.high <- preds$conf.high * 100
   preds$group <- factor(preds$group)
-  print(preds)
   
-  # Panel 1: Rohdaten + Aggregation
-  p1 <- ggplot(summary_general, aes(x = protection_cat, y = mean_occ_change * 100)) +
+  # Panel 1: Violin + Box + Rohdaten
+  p1 <- ggplot(summary_general, aes_string(x = "protection_cat", y = "mean_occ_change * 100")) +
     coord_flip() +
     geom_hline(yintercept = 0, linetype = "dashed", color = "grey30", linewidth = 0.8) +
+    
     geom_half_violin(
       data = summary_prot,
       aes_string(x = protection_var, y = "mean_occ_change*100", fill = protection_var),
-      side = "l", alpha = 0.35, color = NA, position = position_nudge(x = -0.05), scale = "count"
+      side = "l", alpha = 0.45, color = NA, position = position_nudge(x = -0.05), scale = "count"
     ) +
+    
     geom_boxplot(
       data = summary_prot,
       aes_string(x = protection_var, y = "mean_occ_change*100", fill = protection_var, color = protection_var),
@@ -266,66 +306,93 @@ for (model_name in names(model_list)) {
       position = position_nudge(x = 0.1),
       alpha = 0.7
     ) +
-    geom_jitter(aes(color = protection_cat), width = 0.02, size = 1.5, alpha = 0.4) +
+    
+    geom_jitter(
+      aes(color = protection_cat),
+      width = 0.02,
+      size = 1.5,
+      alpha = 0.4
+    ) +
+    
     labs(
-      title = paste("Protection threshold:", substr(protection_var, 11, 12),"%"),
+      title = paste("Protection threshold:", substr(protection_var, 11, 12), "%"),
       x = protection_var,
       y = NULL,
       color = "Protection",
       fill = "Protection"
     ) +
-    scale_fill_manual(values = acadia_custom) +
-    scale_color_manual(values = acadia_custom) +
+    
+    scale_fill_manual(values = custom_colors) +
+    scale_color_manual(values = custom_colors) +
+    
     theme_bw(base_family = "Roboto Condensed", base_size = 13) +
     theme(
-      text             = element_text(family = "roboto_condensed"),
-      legend.title     = element_text(size = 80),
-      legend.text      = element_text(size = 70),
-      axis.title.x     = element_blank(),
-      axis.title.y     = element_text(size = 80),
-      axis.text.x      = element_text(size = 70),
-      axis.text.y      = element_text(size = 64),
+      text = element_text(family = "roboto_condensed"),
+      legend.title = element_text(size = 80),
+      legend.text = element_text(size = 70),
+      axis.title.x = element_blank(),
+      axis.title.y = element_text(size = 80),
+      axis.text.x = element_text(size = 70),
+      axis.text.y = element_text(size = 64),
       title = element_text(size = 80),
-      legend.position  = "none"
+      legend.position = "none"
     )
   
-  # Panel 2: Prediction with SE
-  p2 <- ggplot(preds, aes(x = x, y = predicted, color = x)) +
-    geom_hline(yintercept = 0, linetype = "dashed", color = "grey30", linewidth = 0.8) + 
-    geom_point(size = 5, position = position_nudge(x = 0.12), alpha = 0.7) +
-    geom_errorbar(aes(ymin = conf.low, ymax = conf.high),
-                  width = 0.1,
-                  linewidth = 1,
-                  position = position_nudge(x = 0.12)) +
+  # Panel 2: Modellvorhersagen + Rohdaten (jitter)
+  p2 <- ggplot() +
+    geom_hline(yintercept = 0, linetype = "dashed", color = "grey30", linewidth = 0.8) +
+    
+    geom_jitter(
+      data = summary_prot,
+      aes_string(x = protection_var, y = "mean_occ_change * 100", color = protection_var),
+      width = 0.09,
+      size = 1.5,
+      alpha = 0.15
+    ) +
+    
+    geom_errorbar(
+      data = preds,
+      aes(x = x, ymin = conf.low, ymax = conf.high),
+      width = 0.03,
+      color = "black",
+      linewidth = 1
+    ) +
+    
+    geom_point(
+      data = preds,
+      aes(x = x, y = predicted),
+      size = 3,
+      color = "black",
+      alpha = 0.7
+    ) +
+    
     coord_flip() +
     scale_y_continuous(expand = expansion(mult = c(0.1, 0.1))) +
-    scale_color_manual(values = acadia_custom) +
+    scale_color_manual(values = custom_colors) +
+    
     labs(x = NULL, y = NULL) +
     theme_bw(base_family = "Roboto Condensed", base_size = 13) +
     theme(
       text = element_text(family = "roboto_condensed"),
       legend.position = "none",
-      axis.text.y     = element_blank(),
-      axis.ticks.y    = element_blank(),
-      axis.title.x    = element_text(size = 70),
-      axis.text.x     = element_text(size = 70)
+      axis.text.y = element_blank(),
+      axis.ticks.y = element_blank(),
+      axis.title.x = element_text(size = 70),
+      axis.text.x = element_text(size = 70)
     )
   
-  # Combination and tag
+  # Combine panels
   final_plot <- wrap_elements(panel = p1 + p2 & xlab(NULL) & theme(plot.margin = margin(5.5, 20, 0, 5.5))) +
-    labs(tag = paste0("Predicted mean occurrence change (%)"))+
+    labs(tag = paste0("Predicted mean occurrence change (%)")) +
     theme(
       text = element_text(family = "roboto_condensed"),
       plot.tag = element_text(size = rel(8)),
       plot.tag.position = "bottom"
     )
-  print(paste("Saving:", protection_var))
-  print(preds)
-  print(head(summary_prot))
-  print(final_plot)
-  # Saving
+  
+  # Save
   ggsave(
-    filename = paste0("./figures/occ_change_", protection_var, ".png"),
+    filename = paste0("./figures/occ-change-threshs/occ_change_", protection_var, ".png"),
     plot = final_plot,
     width = 40,
     height = 20,
