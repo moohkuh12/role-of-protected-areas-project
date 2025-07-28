@@ -13,6 +13,21 @@ source("./r-scripts/00-preamble.R")
 dichromat::colorschemes$LightBluetoDarkBlue.7
 dichromat_palette <- c("#FFFFFF", "#CCFDFF" ,"#99F8FF" ,"#66F0FF" ,"#33E4FF" ,"#00AACC" ,"#007A99")
 # scale_color_gradientn(colors = dichromat::colorschemes$LightBluetoDarkBlue.7)
+theme_map_base <- theme_minimal(base_family = "roboto_condensed", base_size = 16) +
+  theme(
+    axis.title = element_blank(),
+    axis.text = element_blank(),
+    axis.ticks = element_blank(),
+    panel.grid = element_blank(),
+    legend.position = "right",
+    legend.direction = "vertical",
+    legend.title = element_text(size = rel(1.8)),
+    legend.text  = element_text(size = rel(1.3)),
+    legend.key.height = unit(4, "cm"),
+    legend.key.width  = unit(0.6, "cm"),
+    plot.margin = margin(2, 2, 2, 2, unit = "mm")
+  )
+
 
 # Load full grid coverage
 grid_sf_coverage_all <- st_read("./data/Protected-areas/grid_sf_protectionstatus.gpkg")
@@ -170,17 +185,18 @@ sr_plot <- ggplot() +
   theme_minimal(base_family = "Roboto Condensed", base_size = 13) +
   theme(
     text = element_text(family = "roboto_condensed"),
-    
+
     # Customize legend text and title
     legend.title = element_text(size = 90, lineheight = 0.4),
     legend.text  = element_text(size = 80, lineheight = 0.1),
-    
+
     # Axis elements
     axis.title.x = element_blank(),          # no x-axis title
     axis.title.y = element_text(size = 90),
     axis.text.x  = element_text(size = 80),
     axis.text.y  = element_text(size = 74)
   )
+  #theme_map_base
 
 # 4. Export the heatmap to PNG
 ggsave(
@@ -188,7 +204,7 @@ ggsave(
   plot = sr_plot,
   width = 20,        # in cm
   height = 25,       # in cm
-  dpi = 200,         # resolution in dots per inch
+  dpi = 200, # resolution in dots per inch
   bg = "white"       # white background
 )
 
@@ -244,14 +260,14 @@ delta_plot <- ggplot() +
   geom_sf(data = grid_delta, aes(fill = delta_SOP), color = "gray20") +
   
   scale_fill_gradientn(colors = rev(dichromat::colorschemes$LightBluetoDarkBlue.7),
-    name = "Δ Summed\noccurrence\nprobability",
-    guide = guide_colorbar(
-      direction = "vertical",
-      barheight = unit(20, "cm"),
-      barwidth = unit(1, "cm"),
-      title.vjust = 4
-    ),
-    na.value = "#b3afa7"
+                       name = "Δ Summed\noccurrence\nprobability",
+                       guide = guide_colorbar(
+                         direction = "vertical",
+                         barheight = unit(20, "cm"),
+                         barwidth = unit(1, "cm"),
+                         title.vjust = 4
+                       ),
+                       na.value = "#b3afa7"
   ) +
   
   geom_sf(data = de_states_proj, fill = NA, color = "grey30", linewidth = 1) +
@@ -298,7 +314,7 @@ delta_plot_rel <- ggplot() +
   
   coord_sf(datum = NA, expand = FALSE) +
   
-  theme_minimal(base_family = "Roboto Condensed", base_size = 13) +
+  theme_minimal(base_family = "roboto_condensed", base_size = 13) +
   theme(
     text = element_text(family = "roboto_condensed"),
     legend.title = element_text(size = 90, lineheight = 0.4),
@@ -356,7 +372,7 @@ delta_prot_overlay_frac <- ggplot() +
   ) +
   geom_sf(data = de_states_proj, fill = NA, color = "grey30", linewidth = 1) +
   coord_sf(datum = NA, expand = FALSE) +
-  theme_minimal(base_family = "Roboto Condensed", base_size = 13) +
+  theme_minimal(base_family = "roboto_condensed", base_size = 13) +
   theme(
     text = element_text(family = "roboto_condensed"),
     legend.title = element_text(size = 90, lineheight = 0.4),
@@ -404,7 +420,7 @@ rel_delta_prot_overlay_frac <- ggplot() +
   ) +
   geom_sf(data = de_states_proj, fill = NA, color = "grey30", linewidth = 1) +
   coord_sf(datum = NA, expand = FALSE) +
-  theme_minimal(base_family = "Roboto Condensed", base_size = 13) +
+  theme_minimal(base_family = "roboto_condensed", base_size = 13) +
   theme(
     text = element_text(family = "roboto_condensed"),
     legend.title = element_text(size = 90, lineheight = 0.4),
@@ -477,6 +493,3 @@ ggsave(
   dpi = 200,
   bg = "white"
 )
-
-
-
