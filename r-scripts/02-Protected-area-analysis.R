@@ -115,7 +115,7 @@ lat_long_ids <- merged_sMon %>%
 lat_long_ids_sf <- st_as_sf(lat_long_ids, coords = c("Longitude", "Latitude"), crs = 4326)
 # Save the lat_long_ids_sf shapefile
 # st_write(lat_long_ids_sf, "./data/landcover_analysis/lat_long_ids_sf.shp")
-
+lat_long_ids_sf <- st_read("./data/landcover_analysis/lat_long_ids_sf.shp")
 # Load the MTBQ grid shapefile
 grid_sf <- st_read("./data/landcover_analysis/MTBQ/MTBQ_31467.shp")
 #grid_sf_WGS84 <- st_transform(grid_sf, crs = 4326)
@@ -182,24 +182,29 @@ intersected %>%
 
 intersected_filtered <- intersected %>%
   mutate(
-    # IUCN category classification (differentiated for biosphere core zone)
+    # Assign numeric codes reflecting protection intensity along the process–landscape gradient
     IUCN_CAT_numeric = case_when(
       IUCN_CAT %in% c("Ia", "Ib") ~ 1,
       IUCN_CAT == "II" ~ 2,
-      IUCN_CAT == "III" ~ 3,
-      IUCN_CAT == "IV" ~ 4,
-      IUCN_CAT == "V" ~ 5,
-      IUCN_CAT == "Not Reported" & DESIG == "Special Areas of Conservation (Habitats Directive)" ~ 6,
-      IUCN_CAT == "Not Reported" & DESIG == "Special Protection Area (Birds Directive)" ~ 7,
-      DESIG == "Biosphärenreservat - Kernzone" ~ 8,
-      DESIG %in% c("Biosphärenreservat - Pflegezone", "Biosphärenreservat - Entwicklungszone") ~ 9,
-      IUCN_CAT %in% c("Not Applicable", "Not Assigned") ~ 10,
-      TRUE ~ 11
+      DESIG == "Biosphärenreservat - Kernzone" ~ 3,
+      IUCN_CAT == "III" & str_detect(DESIG, "Landschaftschutz") ~ 6,  # ← corrected - some iucn cats were wrongly assigned!
+      IUCN_CAT == "III" ~ 4,  # echte Naturdenkmale, falls vorhanden
+      IUCN_CAT == "IV" ~ 5,
+      IUCN_CAT == "V" ~ 6,
+      IUCN_CAT == "Not Reported" & DESIG %in% c(
+        "Special Areas of Conservation (Habitats Directive)",
+        "Site of Community Importance (Habitats Directive)"
+      ) ~ 7,
+      IUCN_CAT == "Not Reported" & DESIG == "Special Protection Area (Birds Directive)" ~ 8,
+      DESIG == "Ramsar Site, Wetland of International Importance" ~ 9,
+      DESIG %in% c("Biosphärenreservat - Pflegezone", "Biosphärenreservat - Entwicklungszone") ~ 10,
+      IUCN_CAT %in% c("Not Applicable", "Not Assigned", "Not Reported") ~ 11,
+      TRUE ~ 12  # fallback: mixed/undefined
     ),
     
-    # Flag for management
+    # Flag for active management categories
     has_management = case_when(
-      IUCN_CAT_numeric %in% c(4, 5, 6, 7) ~ TRUE,
+      IUCN_CAT_numeric %in% c(5, 6, 7, 8, 9) ~ TRUE,  # IV, V, N2000, Ramsar
       DESIG %in% c("Biosphärenreservat - Pflegezone", "Biosphärenreservat - Entwicklungszone") ~ TRUE,
       TRUE ~ FALSE
     )
@@ -210,6 +215,16 @@ intersected_filtered <- intersected %>%
   mutate(overlap_area = as.numeric(st_area(.)))
 
 
+# check which protected areas get the 11 categorie
+intersected_filtered %>%
+  filter(IUCN_CAT_numeric == 4) %>%
+  st_set_geometry(NULL) %>%
+  count(DESIG, IUCN_CAT, sort = TRUE)
+
+# DESIG       IUCN_CAT  n
+# 1     Baltic Sea Protected Area (HELCOM)   Not Reported 77
+# 2 World Heritage Site (natural or mixed) Not Applicable  1
+# > 
 
 # Create area-weighted management score per grid cell
 management_weighted <- intersected_filtered %>%
@@ -252,8 +267,8 @@ grid_cov_area <- grid_joined %>%
 
 
 # Optional: Save for checking
-st_write(intersected_filtered, "./data/Protected-areas/intersected_filtered.gpkg")
-
+#st_write(intersected_filtered, "./data/Protected-areas/intersected_filtered.gpkg")
+#intersected_filtered <- st_read("./data/Protected-areas/intersected_filtered.gpkg")
 # STEP 6: Calculate area-weighted IUCN protection class per grid cell
 #
 # For each grid cell (id), an area-weighted average of the assigned protection category
@@ -265,9 +280,10 @@ st_write(intersected_filtered, "./data/Protected-areas/intersected_filtered.gpkg
 # The final categorical label 'IUCN_CAT_final' reflects the dominant protection type in a cell.
 
 priority_order <- tibble(
-  IUCN_CAT_numeric = c(1, 2, 8, 3, 4, 5, 6, 7, 9, 10, 11),
-  priority =        c(11,10, 9, 8, 7, 6, 5, 4, 3, 2, 1)
+  IUCN_CAT_numeric = c(1, 2, 8, 3, 4, 5, 6, 7, 11, 9, 10, 12),
+  priority =        c(12,11,10, 9, 8, 7, 6, 5, 4, 3, 2, 1)
 )
+
 
 # Fläche pro Kategorie innerhalb jeder Zelle
 iucn_area_share <- intersected_filtered %>%
@@ -292,17 +308,33 @@ iucn_dominant <- iucn_dominant %>%
   mutate(IUCN_CAT_final = case_when(
     IUCN_CAT_numeric == 1 ~ "Ia/Ib",
     IUCN_CAT_numeric == 2 ~ "II",
-    IUCN_CAT_numeric == 3 ~ "III",
-    IUCN_CAT_numeric == 4 ~ "IV",
-    IUCN_CAT_numeric == 5 ~ "V",
-    IUCN_CAT_numeric == 6 ~ "Habitats Directive (Natura 2000)",
-    IUCN_CAT_numeric == 7 ~ "Birds Directive (Natura 2000)",
-    IUCN_CAT_numeric == 8 ~ "Biosphere Reserve (Core Zone)",
-    IUCN_CAT_numeric == 9 ~ "Biosphere Reserve (Buffer/Transition)",
-    IUCN_CAT_numeric == 10 ~ "Not Assigned/Applicable",
-    IUCN_CAT_numeric == 11 ~ "Mixed/Undefined Protected",
+    IUCN_CAT_numeric == 3 ~ "Biosphere Reserve (Core Zone)",
+    IUCN_CAT_numeric == 4 ~ "III",
+    IUCN_CAT_numeric == 5 ~ "IV",
+    IUCN_CAT_numeric == 6 ~ "V",
+    IUCN_CAT_numeric == 7 ~ "Habitats Directive (Natura 2000)",
+    IUCN_CAT_numeric == 8 ~ "Birds Directive (Natura 2000)",
+    IUCN_CAT_numeric == 9 ~ "Ramsar Site",
+    IUCN_CAT_numeric == 10 ~ "Biosphere Reserve (Buffer/Transition)",
+    IUCN_CAT_numeric == 11 ~ "Other",
+    IUCN_CAT_numeric == 12 ~ "Mixed/Undefined Protected",
     TRUE ~ "Unprotected"
   ))
+
+iucn_dominant$IUCN_CAT_final <- factor(
+  iucn_dominant$IUCN_CAT_final,
+  levels = c(
+    "Ia/Ib", "II", "Biosphere Reserve (Core Zone)", "III", "IV", "V",
+    "Habitats Directive (Natura 2000)", "Birds Directive (Natura 2000)",
+    "Ramsar Site", "Biosphere Reserve (Buffer/Transition)",
+    "Other", "Mixed/Undefined Protected"
+  )
+)
+
+intersected_filtered %>%
+  filter(IUCN_CAT_numeric == 4) %>%  # IUCN III ist jetzt numeric = 4 bei dir
+  arrange(desc(overlap_area)) %>%
+  head(20)
 
 # For each grid cell (id), we calculate an area-weighted protection value that reflects the 
 # average level of legal protection based on the overlapping protected area fragments.
@@ -318,11 +350,18 @@ iucn_dominant <- iucn_dominant %>%
 
 
 # determine dominant designation year of largest PA in cell
-dominant_year <- intersected_filtered %>%
-  group_by(id, STATUS_YR) %>%
-  summarise(area_sum = sum(overlap_area, na.rm = TRUE), .groups = "drop") %>%
+dominant_year <- iucn_dominant %>%
+  select(id, IUCN_CAT_numeric) %>%
+  left_join(
+    intersected_filtered %>%
+      st_set_geometry(NULL) %>%
+      select(id, IUCN_CAT_numeric, STATUS_YR, overlap_area),
+    by = c("id", "IUCN_CAT_numeric")
+  ) %>%
   group_by(id) %>%
-  slice_max(order_by = area_sum, n = 1, with_ties = FALSE)
+  slice_max(order_by = overlap_area, n = 1, with_ties = FALSE) %>%
+  ungroup() %>%
+  select(id, dominant_status_yr = STATUS_YR)
 
 
 # ===========================
@@ -331,7 +370,7 @@ dominant_year <- intersected_filtered %>%
 iucn_weighted_df_clean <- iucn_dominant %>%
   st_set_geometry(NULL) %>%
   left_join(
-    dominant_year %>% st_set_geometry(NULL) %>% select(id, dominant_status_yr = STATUS_YR),
+    dominant_year %>% st_set_geometry(NULL) %>% select(id, dominant_status_yr),
     by = "id"
   ) %>%
   left_join(management_weighted, by = "id")
@@ -359,15 +398,6 @@ st_write(
 
 
 
-
-
-
-
-intersected_filtered_clean %>%
-  filter(IUCN_CAT_numeric == 8) %>%
-  select(NAME, DESIG, IUCN_CAT_numeric, overlap_area) %>%
-  distinct()
-
 # Check example: 
 intersected_filtered %>%
   filter(id == 10154) %>%
@@ -378,6 +408,10 @@ intersected_filtered %>%
 intersected_filtered %>%
   st_set_geometry(NULL) %>%
   count(DESIG, sort = TRUE)
+
+grid_sf_coverage %>%
+  st_set_geometry(NULL) %>%
+  count(IUCN_CAT_final, sort = TRUE)
 
 summary(grid_sf_coverage$cov_frac)
 st_crs(grid_sf_coverage) # Check the CRS of the resulting grid
@@ -402,6 +436,13 @@ grid_sf_coverage_clean <- st_as_sf(grid_sf_coverage_clean, sf_column_name = "geo
 
 # Save the result
 st_write(grid_sf_coverage_clean, "./data/Protected-areas/grid_sf_coverage_clean.gpkg", delete_dsn = TRUE)
+# Protected area geometries per cell
+# st_write(
+#   intersected_union %>% select(id, geometry_pa = geometry),
+#   "./data/Protected-areas/grid_sf_coverage_clean.gpkg",
+#   layer = "protected_area_geoms",
+#   append = TRUE
+# )
 
 grid_df_csv <- grid_sf_coverage_clean %>%
   st_set_geometry(NULL)
@@ -420,6 +461,11 @@ write.csv(grid_df_csv, "./data/Protected-areas/grid_sf_coverage_clean.csv", row.
 # Make a dataset with all sensitivities
 grid_sf_coverage_all <- grid_sf_coverage_clean %>%
   mutate(
+    protection_cat = case_when(
+      cov_frac <= 0.005 ~ "not protected",
+      cov_frac < 0.9    ~ "part protected",
+      TRUE              ~ "protected"
+    ),
     protection90 = case_when(
       cov_frac >= 0.9 ~ "protected",
       cov_frac >= 0.1 & cov_frac < 0.9 ~ "part protected",
