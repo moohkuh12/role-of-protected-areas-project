@@ -98,7 +98,7 @@ cat_levels <- levels(grid_to_plot$IUCN_CAT_final)  # should be 11 levels (BR Buf
 
 # 4. Assign each color to the corresponding category
 colors <- c(
-  setNames(palette_11, levels(grid_to_plot$IUCN_CAT_final)[1:9]),
+  setNames(palette_11, levels(grid_to_plot$IUCN_CAT_final)[1:10]),
   "Other" = "#a2cacc"
 )
 
