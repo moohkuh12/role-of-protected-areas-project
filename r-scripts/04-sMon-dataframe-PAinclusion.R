@@ -120,7 +120,7 @@ sMon_wide <- merged_sMon_ids_filtered %>%
     names_prefix = "T",  
     id_cols = c(id, TaxonName,wcvp_name, MTB_Q, Longitude, Latitude,  geom, IUCN_CAT_final, priority, mean_mgmt, dominant_management,
                 #WDPAID, DESIG_ENG, NAME,IUCN_CAT_numeric,GIS_M_AREA, GIS_T_AREA,  GIS_AREA, REP_AREA, overlap_area, 
-                cov_frac, dominant_status_yr, protection90, protection80, protection70, protection60, protection50,urban_area, urban_prop, urban_class, forest_prop)  
+                cov_frac, dominant_status_yr, protection_cat, protection90, protection80, protection70, protection60, protection50,urban_area, urban_prop, urban_class, forest_prop)  
   )
 
 sMon_widet2 <- merged_sMon_ids_t2 %>%
@@ -184,7 +184,7 @@ smon_wide_joinedt2 <- smon_wide_joinedt2 %>%
   left_join(eive_data, by = "wcvp_name")
 
 # Summary: how many species in sMon_wide have EIVE trait data?
-sMon_wide %>%
+smon_wide_joined %>%
   distinct(wcvp_name, .keep_all = TRUE) %>%
   summarise(
     total = n(),  # total number of unique species
@@ -231,10 +231,10 @@ smon_wide_joined %>%
   )
 
 # Save wide format as CSV
-write_csv(smon_wide_joined, "./data/sMon/sMon_wide_220725.csv")
-sMon_wide_joined <- read_csv("./data/sMon/sMon_wide_220725.csv")
+write_csv(smon_wide_joined, "./data/sMon/sMon_wide_210725.csv")
+sMon_wide_joined <- read_csv("./data/sMon/sMon_wide_210725.csv")
 # Save as spatial geopackage (preserving geometry)
-st_write(smon_wide_joined, "./data/sMon/sMon_wide_220725.gpkg")
+st_write(smon_wide_joined, "./data/sMon/sMon_wide_210725.gpkg")
 
 
 

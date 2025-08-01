@@ -133,7 +133,7 @@ legend_plot <- ggplot(legend_df, aes(x = x, y = y)) +
   geom_text(aes(label = label), y = -6, angle = 90, hjust = 1, vjust = 0.5, size = 18, family = "roboto_condensed") +
   
   # ↑ Move the arrow line up by increasing y, ↓ move it down by decreasing y
-  annotate("segment", x = 1, xend = 9, y = 15, yend = 15,  # ← increase y to move arrow up
+  annotate("segment", x = 1, xend = 10, y = 15, yend = 15,  # ← increase y to move arrow up
            arrow = arrow(type = "closed", length = unit(0.2, "inches")), linewidth = 3, color= "#1e4436") +
   
   # ↑ Move the left-side label ("Process Protection") up by increasing y
@@ -141,7 +141,7 @@ legend_plot <- ggplot(legend_df, aes(x = x, y = y)) +
            size = 18, family = "roboto_condensed") +
   
   # ↑ Move the right-side label ("Cultural Landscape") up by increasing y
-  annotate("text", x = 14.5, y = 25, label = "Cultural Landscape", hjust = 1,  # ← increase y to move label up
+  annotate("text", x = 15.5, y = 25, label = "Cultural Landscape", hjust = 1,  # ← increase y to move label up
            size = 18, family = "roboto_condensed") +
 
 

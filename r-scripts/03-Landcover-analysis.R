@@ -350,53 +350,6 @@ euforplants %>%
 write.csv(euforplants, "./data/landcover_analysis/euforplants_summary.csv", row.names = FALSE)
 euforplants <- read.csv("./data/landcover_analysis/euforplants_summary.csv", stringsAsFactors = FALSE)
 
-# New Categories for the EuForPlants dataset----
-euforplants1 <- euforplants %>%
-  mutate(main_group = case_when(
-    main_group %in% c("forest", "montane forest") ~ "forest specialist",
-    main_group %in% c("forest + open", "montane forest + open", "mainly open", "montane mainly open") ~ "generalist",
-    main_group %in% c("open", "montane open") ~ "open specialist",
-    main_group %in% c("mixed", "montane mixed") ~ "mixed",
-    TRUE ~ NA_character_
-  ))
-euforplants2 <- euforplants %>%
-  mutate(main_group2 = case_when(
-    main_group %in% c("forest") ~ "forest specialist",
-    main_group %in% c("forest + open", "mainly open") ~ "generalist",
-    main_group %in% c("open") ~ "open specialist",
-    main_group %in% c("mixed", "montane mixed") ~ "mixed",
-    main_group %in% c("montane forest") ~ "montane forest",
-    main_group %in% c("montane mainly open", "montane forest + open", "montane open") ~ "montane open",
-    TRUE ~ NA_character_
-  ))
-
-euforplants <- euforplants %>%
-  mutate(main_group_explanation = case_when(
-    main_group == "forest-affiliated" ~ 
-      "Species associated with forest habitats, including closed forests, edges, and transitional types. May also occur in open areas depending on region over Germany.",
-    
-    main_group == "generalist (semi-open)" ~ 
-      "Species found primarily in open vegetation but capable of persisting in some forested habitats. Often typical of disturbed or transitional sites.",
-    
-    main_group == "open specialist" ~ 
-      "True open-habitat specialist, found exclusively in non-forested landscapes (e.g., grasslands, heaths, meadows).",
-    
-    main_group == "mixed" ~ 
-      "Complex or inconsistent combination of habitat affinities, not classifiable into the main groups.",
-    
-    is.na(main_group) ~ 
-      "No classification possible due to missing or ambiguous regional data.",
-    
-    TRUE ~ 
-      "Unclassified or exceptional case – manual review recommended."
-  ))
-write.csv(euforplants1, "./data/landcover_analysis/euforplants_summary_new.csv", row.names = FALSE)
-write.csv(euforplants2, "./data/landcover_analysis/euforplants_summary_new_montane210706.csv", row.names = FALSE)
-
-
-
-
-
 # ---- Prepare EIVE data ----
 
 # Load raw EIVE dataset (vegetation classification)
