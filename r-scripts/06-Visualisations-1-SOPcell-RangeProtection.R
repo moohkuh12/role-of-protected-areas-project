@@ -33,9 +33,9 @@ theme_map_base <- theme_minimal(base_family = "roboto_condensed", base_size = 16
 grid_sf_coverage_all <- st_read("./data/Protected-areas/grid_sf_protectionstatus.gpkg")
 
 # Extract unique protection status per grid cell
-protection_status <- smon_filtered_updated %>%
+protection_status <- smon_filtered %>%
   distinct(id, .keep_all = TRUE) %>%
-  select(id, protection_cat, mean_mgmt_new)
+  select(id, protection_cat)
 
 # Join with grid geometries
 grid_plot <- grid_sf_coverage_all %>%
@@ -45,6 +45,10 @@ grid_plot <- grid_sf_coverage_all %>%
 # Set CRS and replace NA with "urban"
 grid_plot_proj <- st_transform(grid_plot, crs = 25832)
 grid_plot_proj$protection_cat <- forcats::fct_na_value_to_level(grid_plot_proj$protection_cat, level = "urban")
+
+# PA intersections per grid cell
+intersected <- st_read("data/Protected-areas/Intermediate/intersected_protected_areas.shp")
+intersected <- st_transform(intersected, crs = st_crs(grid_plot_proj))
 
 # Load Bundesland boundaries
 de_states <- st_read("https://raw.githubusercontent.com/isellsoap/deutschlandGeoJSON/main/2_bundeslaender/2_hoch.geo.json")

@@ -16,7 +16,13 @@ sMon_wide <- read_csv("./data/sMon/sMon_wide_210725.csv")
 smon_filtered <- sMon_wide %>%
   filter(urban_class != "urban")
 rm(sMon_wide)
-
+smon_filtered<- smon_filtered%>%
+  mutate(protection_cat = case_when(
+    cov_frac <= 0.005 ~ "not protected",
+    cov_frac < 0.9    ~ "part protected",
+    TRUE              ~ "protected"
+  )) %>%
+  mutate(protection_cat = factor(protection_cat, levels = c("not protected", "part protected", "protected")))
 
 # Load the adapted euforplants data
 euforplants <- read.csv("./data/landcover_analysis/euforplants_summary_new.csv")
