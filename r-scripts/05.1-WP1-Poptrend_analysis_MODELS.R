@@ -563,7 +563,7 @@ plot_em_qb <- ggplot(em_qb, aes(x = group, y = predicted, fill = group)) +
   )+ 
   
   # Horizontale Referenzlinie bei y = 1
-  geom_hline(yintercept = 1, linetype = "dashed", color = "grey40", linewidth = 0.6) +
+  geom_hline(yintercept = 1, linetype = "dashed", color = "grey30", linewidth = 0.6) +
 
   geom_point(
     data = survival_analysis,
@@ -616,7 +616,7 @@ plot_em_qb
 ###############
 # Plot panel 1:
 glmTBMplot <- ggplot(survival_analysis, aes(x = protection_cat, y = survival_prob, fill = protection_cat)) +
-  
+  geom_hline(yintercept = 1, linetype = "dashed", color = "grey30", linewidth = 0.6) +
   # Half-violin (links)
   geom_half_violin(
     side = "l",
