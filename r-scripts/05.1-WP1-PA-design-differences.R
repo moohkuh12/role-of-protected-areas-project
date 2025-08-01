@@ -6,7 +6,7 @@
 source("./r-scripts/00-preamble.R")
 
 # wide format of sMon data 
-sMon_wide <- read_csv("./data/sMon/sMon_wide_220725.csv")
+sMon_wide <- read_csv("./data/sMon/sMon_wide_210725.csv")
 smon_filtered <- sMon_wide %>%
   filter(urban_class != "urban")
 rm(sMon_wide)
@@ -22,26 +22,10 @@ de_states <- st_read("https://raw.githubusercontent.com/isellsoap/deutschlandGeo
 grid_sf_coverage_all <- st_read("./data/Protected-areas/grid_sf_protectionstatus.gpkg")
 intersections <- st_read("./data/Protected-areas/Intermediate/intersected_protected_areas.shp")
 
-smon_filtered<- smon_filtered%>%
-  mutate(protection_cat = case_when(
-    cov_frac <= 0.005 ~ "not protected",
-    cov_frac < 0.9    ~ "part protected",
-    TRUE              ~ "protected"
-  )) %>%
-  mutate(protection_cat = factor(protection_cat, levels = c("not protected", "part protected", "protected")))
-
-# Extract unique protection status per grid cell
-protection_status <- smon_filtered %>%
-  distinct(id, .keep_all = TRUE) %>%
-  select(id, protection_cat)
-
-# Join with grid geometries
-grid_plot <- grid_sf_coverage_all %>%
-  left_join(protection_status, by = "id") %>%
-  mutate(protection_cat = factor(protection_cat, levels = c("not protected", "part protected", "protected")))
 
 # Set CRS and replace NA with "urban"
-grid_plot_proj <- st_transform(grid_plot, crs = 25832)
+grid_plot_proj <- st_transform(grid_sf_coverage_all, crs = 25832)
+grid_plot_proj$protection_cat <- as.character(grid_plot_proj$protection_cat)
 grid_plot_proj$protection_cat <- forcats::fct_na_value_to_level(grid_plot_proj$protection_cat, level = "urban")
 de_states_proj <- st_transform(de_states, crs = st_crs(grid_plot_proj))
 # For urban layer, we use the grid cell ids that are not in the smon_filtered dataset - excluded urban ids in the beginning
@@ -57,8 +41,9 @@ iucn_cat_order <- c(
     "V",
     "Habitats Directive (Natura 2000)",
     "Birds Directive (Natura 2000)",
+    "Ramsar Site",
     "Biosphere Reserve (Buffer/Transition)",
-    "Mixed/Undefined Protected"
+    "Other"
   )
   
 # Rename design names
@@ -71,8 +56,9 @@ label_map <- c(
   "V" = "IUCN V",
   "Habitats Directive (Natura 2000)" = "N2000 Habitats",
   "Birds Directive (Natura 2000)" = "N2000 Birds",
+  "Ramsar Site" = "Ramsar Site",
   "Biosphere Reserve (Buffer/Transition)" = "BR Buffer",
-  "Mixed/Undefined Protected" = "Other"
+  "Other" = "Other"
 )
 
 grid_to_plot <- grid_plot_proj %>%
@@ -88,19 +74,20 @@ grid_to_plot <- grid_plot_proj %>%
   )
 
 
-colors <- natparks.pals("Denali",n=9)
+colors <- natparks.pals("Denali",n=10)
 
 # 1. Create interpolated base palette (5 source colors → 11 target colors)
-palette_11 <- colorRampPalette(natparks.pals("Denali", n = 5))(9)
+palette_11 <- colorRampPalette(natparks.pals("Denali", n = 5))(10)
 
 # 2. Lighten the last color (for BR Buffer)
-palette_11[9] <- lighten(palette_11[9], amount = 0.8) # BR Buffer 
+palette_11[9] <- lighten(palette_11[9], amount = 0.6) # ramsar site 
+palette_11[10] <- lighten(palette_11[10], amount = 0.8) # BR Buffer 
 palette_11[8] <- lighten(palette_11[8], amount = 0.6) 
 palette_11[7] <- lighten(palette_11[7], amount = 0.35) 
 #palette_11[6] <- lighten(palette_11[6], amount = 0.2) 
-palette_11[3] <- lighten(palette_11[3], amount = 0.3) # iucn2 
-palette_11[1] <- darken(palette_11[1], amount = 0.3) # BR core 
-palette_11[4] <- lighten(palette_11[4], amount = 0.2)
+palette_11[3] <- lighten(palette_11[3], amount = 0.2) # br core
+palette_11[1] <- darken(palette_11[1], amount = 0.3)  
+palette_11[4] <- lighten(palette_11[4], amount = 0.3)
 palette_11[5] <- darken(palette_11[5], amount = 0.1)
 # Show result
 scales::show_col(palette_11)
@@ -123,10 +110,10 @@ names(colors) <- levels(grid_to_plot$IUCN_CAT_final)
 categories <- levels(grid_to_plot$IUCN_CAT_short)
 
 legend_df <- tibble(
-  x = c(1:9, 11),  # "Other" bei x = 13 → rechts außen
-  y = rep(1, 10),   # gleiche Höhe
-  label = c(categories[1:9], "Other"),
-  fill = c(colors[1:9], "#a2cacc")  # neutrales Grau
+  x = c(1:10, 12),  # "Other" bei x = 13 → rechts außen
+  y = rep(1, 11),   # gleiche Höhe
+  label = c(categories[1:10], "Other"),
+  fill = c(colors[1:10], "#a2cacc")  # neutrales Grau
 )
 
 
@@ -274,12 +261,13 @@ label_map <- c(
   "V" = "IUCN V",
   "Habitats Directive (Natura 2000)" = "N2000 Habitats",
   "Birds Directive (Natura 2000)" = "N2000 Birds",
+  "Ramsar Site" = "Ramsar Site",
   "Biosphere Reserve (Buffer/Transition)" = "BR Buffer",
-  "Mixed/Undefined Protected" = "Other"
+  "Other" = "Other"
 )
 
 # Colors for map are to light for boxplots- we use interpolated base palette (5 source colors → 11 target colors)
-palette_11 <- colorRampPalette(natparks.pals("Denali", n = 5))(9)
+palette_11 <- colorRampPalette(natparks.pals("Denali", n = 5))(10)
 
 # Show result
 scales::show_col(palette_11)
@@ -290,7 +278,7 @@ cat_levels <- levels(grid_to_plot$IUCN_CAT_final)  # should be 11 levels (BR Buf
 
 # 4. Assign each color to the corresponding category
 colors <- c(
-  setNames(palette_11, levels(grid_to_plot$IUCN_CAT_final)[1:9]),
+  setNames(palette_11, levels(grid_to_plot$IUCN_CAT_final)[1:10]),
   "Other" = "#a2cacc"
 )
 
