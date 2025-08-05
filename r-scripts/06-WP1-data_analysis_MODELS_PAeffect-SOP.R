@@ -16,37 +16,25 @@ sMon_wide <- read_csv("./data/sMon/sMon_wide_210725.csv")
 smon_filtered <- sMon_wide %>%
   filter(urban_class != "urban")
 rm(sMon_wide)
-smon_filtered<- smon_filtered%>%
-  mutate(protection_cat = case_when(
-    cov_frac <= 0.005 ~ "not protected",
-    cov_frac < 0.9    ~ "part protected",
-    TRUE              ~ "protected"
-  )) %>%
-  mutate(protection_cat = factor(protection_cat, levels = c("not protected", "part protected", "protected")))
+# smon_filtered<- smon_filtered%>%
+#   mutate(protection_cat = case_when(
+#     cov_frac <= 0.005 ~ "not protected",
+#     cov_frac < 0.9    ~ "part protected",
+#     TRUE              ~ "protected"
+#   )) %>%
+#   mutate(protection_cat = factor(protection_cat, levels = c("not protected", "part protected", "protected")))
 
 # Load the adapted euforplants data
-euforplants <- read.csv("./data/landcover_analysis/euforplants_summary_new.csv")
-euforplants2 <- read.csv("./data/landcover_analysis/euforplants_summary_new_montane2506.csv")
+# euforplants <- read.csv("./data/landcover_analysis/euforplants_summary_new.csv")
+# euforplants2 <- read.csv("./data/landcover_analysis/euforplants_summary_new_montane2506.csv")
 
 # Load trait df or create it
 traits_df <- read_csv("./data/sMon/sMon_traits.csv")
 
-traits_df <- smon_filtered%>%
-  select(TaxonName, main_group, EIVEres.M, EIVEres.M.nw3,EIVEres.N, EIVEres.N.nw3, EIVEres.L, EIVEres.L.nw3, EIVEres.T, EIVEres.T.nw3, EIVEres.R, EIVEres.R.nw3, Family, PlantGrowthForm, Woodiness, LeafType, LeafPhenology ) %>%
-  distinct()
+# traits_df <- smon_filtered%>%
+#   select(TaxonName, main_group, EIVEres.M, EIVEres.M.nw3,EIVEres.N, EIVEres.N.nw3, EIVEres.L, EIVEres.L.nw3, EIVEres.T, EIVEres.T.nw3, EIVEres.R, EIVEres.R.nw3, Family, PlantGrowthForm, Woodiness, LeafType, LeafPhenology ) %>%
+#   distinct()
 
-# add new euforplants traits
-traits_df<- traits_df %>%
-  select(-main_group) %>%
-  left_join(
-    euforplants %>% select(wcvp_name, main_group),
-    by = c("TaxonName" = "wcvp_name")
-  )
-traits_df<- traits_df %>%
-  left_join(
-    euforplants2 %>% select(wcvp_name, main_group2),
-    by = c("TaxonName" = "wcvp_name")
-  )
 
 ###############################
 ###############################

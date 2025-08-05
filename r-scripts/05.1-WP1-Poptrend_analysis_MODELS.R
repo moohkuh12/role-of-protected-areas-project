@@ -23,18 +23,14 @@ head(sMon_filtered)
 
 
 
-trend_data_mgmt <- smon_filtered_updated %>%
+trend_data<- smon_filtered%>%
   filter(OP_T1 > 0) %>%
   mutate(
     # Trend: 1 wenn OP_T3 > OP_T1 (Zunahme), sonst 0 (Abnahme oder gleich)
     increase = ifelse(OP_T3 > OP_T1, 1, 0),
     protection_cat = protection_cat) %>%
   select(id, TaxonName, increase, #starts_with("protection")
-  protection_cat, cov_frac, mean_mgmt_new, management_class) %>%
-  mutate(
-  mean_mgmt_new = ifelse(protection_cat == "not protected", NA, mean_mgmt_new),
-  management_class = ifelse(protection_cat == "not protected", NA, management_class)
-)
+  protection_cat, cov_frac)
 
 # Step 1: Prepare increase/decrease dataset (species presence in t1 ≥1%)
 trend_data <- smon_filtered %>%
@@ -501,7 +497,7 @@ survival_analysis <- survival_analysis %>%
   mutate(obs_id = row_number())  # Jede Zeile bekommt eindeutige ID
 # Fit a beta-binomial model with an observation-level random effect
 
-
+survival_analysis$protection_cat <- factor(survival_analysis$protection_cat, levels = c("not protected", "part protected", "protected"))
 
 # betabinomial model -------------
 model_bb <- glmmTMB(
@@ -515,13 +511,13 @@ model_bb <- glmmTMB(
 #Ein Observation-Level Random Effect (OLRE) gibt jeder Beobachtung eine eigene Zufallskomponente, 
 # um zusätzliche Streuung im Modell zu berücksichtigen – besonders nützlich bei Overdispersion.
 
-pred_mixed <- ggpredict(model_bb, terms = "protection_cat")
+pred_mixed <- ggpredict(model_bb, terms = "protection_cat", bias_correction = TRUE)
 plot(pred_mixed)
 
 summary(model_bb)
 
 # Generate predicted marginal means for protection category
-em_qb <- ggpredict(model_bb, terms = "protection_cat")
+em_qb <- ggpredict(model_bb, terms = "protection_cat", bias_correction = T)
 em_qb$group <- factor(em_qb$x, levels = c("not protected", "part protected", "protected"))
 
 

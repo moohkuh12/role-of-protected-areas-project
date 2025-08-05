@@ -22,38 +22,6 @@ sMon_wide <- read_csv("./data/sMon/sMon_wide_100625.csv")
 smon_filtered <- sMon_wide %>%
   filter(urban_class != "urban", OP_T1 > 0)
 rm(sMon_wide)
-# we just use grid cells that are less than 50% urban 
-euforplants <- read.csv("./data/landcover_analysis/euforplants_summary_new.csv")
-euforplants2 <- read.csv("./data/landcover_analysis/euforplants_summary_new_montane2506.csv")
-traits_df <- smon_filtered%>%
-  select(TaxonName, main_group, EIVEres.M, EIVEres.M.nw3,EIVEres.N, EIVEres.N.nw3, EIVEres.L, EIVEres.L.nw3, EIVEres.T, EIVEres.T.nw3, EIVEres.R, EIVEres.R.nw3, Family, PlantGrowthForm, Woodiness, LeafType, LeafPhenology ) %>%
-  distinct()
-
-# Define protection categories based on cov_frac
-smon_filtered<- smon_filtered%>%
-  mutate(protection_cat = case_when(
-    cov_frac <= 0.005 ~ "not protected",
-    cov_frac < 0.9    ~ "part protected",
-    TRUE              ~ "protected"
-  )) %>%
-  mutate(protection_cat = factor(protection_cat, levels = c("not protected", "part protected", "protected")))
-
-# Load trait df
-traits_df <- read_csv("./data/sMon/sMon_traits.csv")
-
-# add new eufor plants traits
-traits_df<- traits_df %>%
-  select(-main_group) %>%
-  left_join(
-    euforplants %>% select(wcvp_name, main_group),
-    by = c("TaxonName" = "wcvp_name")
-  )
-traits_df<- traits_df %>%
-  left_join(
-    euforplants2 %>% select(wcvp_name, main_group2),
-    by = c("TaxonName" = "wcvp_name")
-  )
-
 
 # Filter for species with high occurrence probability at T1
 #smon_filtered_high_occ <- smon_filtered %>%
@@ -74,7 +42,7 @@ poptrend_summary <- smon_filtered %>%
   mutate(
     occ_change = OP_T3 - OP_T1,
     
-    # Alternative Schutzklassifikation
+    # Alternative protection calssification
     alt_protection = if_else(cov_frac >= 0.7, "protected", "not")
   ) %>%
   group_by(TaxonName) %>%
@@ -92,51 +60,39 @@ poptrend_summary <- smon_filtered %>%
   ) %>%
   ungroup()
 
+# 
+# poptrend_summary_reg <- smon_filtered %>%
+#   filter(OP_T1 > 0) %>%
+#   mutate(occ_change = OP_T3 - OP_T1) %>%
+#   group_by(TaxonName, region) %>%
+#   summarise(
+#     SOP_T1 = sum(OP_T1, na.rm = TRUE),
+#     SOP_T3 = sum(OP_T3, na.rm = TRUE),
+#     delta_SOP = SOP_T3 - SOP_T1,
+#     logratio = log((SOP_T3 + 0.01)/(SOP_T1 + 0.01)),
+#     log_SOP_T1 = log(SOP_T1 + 0.01),
+#     n_cells_T1 = n(),  # durch filter(OP_T1 > 0) = Zellen mit Vorkommen in T1
+#     n_protected_T1 = sum(protection_cat == "protected", na.rm = TRUE),
+#     percent_range_protected = n_protected_T1 / n_cells_T1 * 100
+#   ) %>%
+#   ungroup()
 
-poptrend_summary_reg <- smon_filtered %>%
-  filter(OP_T1 > 0) %>%
-  mutate(occ_change = OP_T3 - OP_T1) %>%
-  group_by(TaxonName, region) %>%
-  summarise(
-    SOP_T1 = sum(OP_T1, na.rm = TRUE),
-    SOP_T3 = sum(OP_T3, na.rm = TRUE),
-    delta_SOP = SOP_T3 - SOP_T1,
-    logratio = log((SOP_T3 + 0.01)/(SOP_T1 + 0.01)),
-    log_SOP_T1 = log(SOP_T1 + 0.01),
-    n_cells_T1 = n(),  # durch filter(OP_T1 > 0) = Zellen mit Vorkommen in T1
-    n_protected_T1 = sum(protection_cat == "protected", na.rm = TRUE),
-    percent_range_protected = n_protected_T1 / n_cells_T1 * 100
-  ) %>%
-  ungroup()
 
-poptrend_summary_t<- poptrend_summary %>%
-  left_join(
-    traits_df,
-    by = c("TaxonName")
-  )
-poptrend_summary_treg<- poptrend_summary_reg %>%
-  left_join(
-    traits_df,
-    by = c("TaxonName")
-  )
-
-poptrend_summary_t$main_group <- factor(poptrend_summary_t$main_group)
-poptrend_summary_treg$main_group <- factor(poptrend_summary_treg$main_group)
 # lmer for populationtrand analysis
 
 poptrend_lm1 <- lm(logratio ~ percent_range_protected + log_SOP_T1 , data = poptrend_summary)
-poptrend_lm3 <- lm(logratio ~ percent_range_protected + log_SOP_T1 + log(n_cells_T1) , data = poptrend_summary)
-summary(poptrend_lm1)
-summary(poptrend_lm2)
-summary(poptrend_lm3)
-AIC(poptrend_lm1, poptrend_lm3)
+# poptrend_lm3 <- lm(logratio ~ percent_range_protected + log_SOP_T1 + log(n_cells_T1) , data = poptrend_summary)
+ summary(poptrend_lm1)
+# summary(poptrend_lm2)
+# summary(poptrend_lm3)
+# AIC(poptrend_lm1, poptrend_lm3)
 
 # Plot the model
 plot(poptrend_lm1)
 
 # Plot for population trend analysis ---------------
 
-# Vorhersagen generieren
+# Generate estimates
 pred <- ggpredict(poptrend_lm1, terms = c("percent_range_protected"))
 
 

@@ -833,3 +833,34 @@ ggsave(
   units = "cm",
   dpi = 300
 )
+
+
+# Tables -------------------
+# Full model summary: Fixed effects + Random effects + CIs + statistics
+model_summary_full <- broom.mixed::tidy(m_combined, effects = "fixed", conf.int = TRUE, conf.method = "Wald")
+
+# Optional: Modellstatistiken (R² etc.)
+model_stats <- data.frame(
+  AIC = AIC(m_combined),
+  BIC = BIC(m_combined),
+  logLik = logLik(m_combined),
+  REMLcrit = summary(m_combined)$devcomp$cmp["REML"]
+)
+
+# Kontraste berechnen (alle pairwise Vergleiche)
+contrasts <- emmeans::emmeans(m_combined, pairwise ~ IUCN_CAT_final_combined, adjust = "tukey")
+
+# Dataframe aus den Kontrasten
+contrasts_df <- as.data.frame(contrasts$contrasts)
+
+# Export
+writexl::write_xlsx(contrasts_df, "./tables/protectiondesign-model_combined_contrasts.xlsx")
+
+# Export: Modelloutput + Kennzahlen in mehrere Sheets
+writexl::write_xlsx(
+  list(
+    "Fixed Effects" = model_summary_full,
+    "Model stats" = model_stats
+  ),
+  path = "./tables/protectiondesign-model_combined_summary.xlsx"
+)
