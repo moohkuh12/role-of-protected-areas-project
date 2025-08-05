@@ -80,9 +80,9 @@ colors <- natparks.pals("Denali",n=10)
 palette_11 <- colorRampPalette(natparks.pals("Denali", n = 5))(10)
 
 # 2. Lighten the last color (for BR Buffer)
-palette_11[9] <- lighten(palette_11[9], amount = 0.6) # ramsar site 
-palette_11[10] <- lighten(palette_11[10], amount = 0.8) # BR Buffer 
-palette_11[8] <- lighten(palette_11[8], amount = 0.6) 
+palette_11[9] <- lighten(palette_11[9], amount = 0.2) # ramsar site 0.6
+palette_11[10] <- lighten(palette_11[10], amount = 0.3) # BR Buffer 0.8
+palette_11[8] <- lighten(palette_11[8], amount = 0.5) 
 palette_11[7] <- lighten(palette_11[7], amount = 0.35) 
 #palette_11[6] <- lighten(palette_11[6], amount = 0.2) 
 palette_11[3] <- lighten(palette_11[3], amount = 0.2) # br core
@@ -326,7 +326,7 @@ summary(m_iucn)
 plot( ggpredict(m_iucn, terms = "IUCN_CAT_final") ) +
   labs(x = "IUCN Category", y = "Log Ratio of SOP (T3/T1)") +
   theme_minimal()
-
+colors[10] <- darken(colors[10], amount = 0.8) # BR Buffer ist to light for boxplots
 # plotting
 
 preds <- ggpredict(m_iucn, terms = c( "IUCN_CAT_final"))
@@ -526,6 +526,308 @@ ggsave(
 ggsave(
   filename = "./figures/iucn-protection-design-performance2.png",
   plot = iucn_plot2,
+  width = 53,
+  height = 25,
+  units = "cm",
+  dpi = 300
+)
+
+
+
+# Protection designs vs no protection -----------------------
+# for comparing iucn_cats towards no protection at all
+smon_filtered_protdesig <- smon_filtered %>%
+  mutate(IUCN_CAT_final_combined = ifelse(
+    cov_frac < 0.1,
+    "Not protected",
+    as.character(IUCN_CAT_final)  # behalte Schutzkategorie nur bei ausreichender Fläche
+  ))
+
+
+
+smon_filtered_protdesig$IUCN_CAT_final <- factor(
+  smon_filtered_protdesig$IUCN_CAT_final_combined,
+  levels = c("Not protected",   "Ia/Ib",
+             "II" ,
+             "Biosphere Reserve (Core Zone)",
+             "III",
+             "IV",
+             "V",
+             "Habitats Directive (Natura 2000)",
+             "Birds Directive (Natura 2000)",
+             "Ramsar Site",
+             "Biosphere Reserve (Buffer/Transition)",
+             "Other"))
+
+summary_iucn_combined <- smon_filtered_protdesig %>%
+  filter(OP_T1 > 0) %>%
+  group_by(TaxonName, IUCN_CAT_final_combined) %>%
+  summarise(
+    SOP_T1 = sum(OP_T1, na.rm = TRUE),
+    SOP_T3 = sum(OP_T3, na.rm = TRUE),
+    log_SOP_T1 = log(SOP_T1 + 0.01),
+    mean_occ_change = mean(OP_T3 - OP_T1, na.rm = TRUE),
+    n_cells = n()
+  ) %>%
+  mutate(
+    delta_SOP = SOP_T3 - SOP_T1,
+    rel_change = delta_SOP / SOP_T1 * 100,
+    logratio = log((SOP_T3 + 0.01)/(SOP_T1 + 0.01))
+  ) %>%
+  ungroup()
+
+label_map <- c(
+  "Ia/Ib" = "IUCN Ia/Ib",
+  "II" = "IUCN II",
+  "Biosphere Reserve (Core Zone)" = "BR Core",
+  "III" = "IUCN III",
+  "IV" = "IUCN IV",
+  "V" = "IUCN V",
+  "Habitats Directive (Natura 2000)" = "N2000 Habitats",
+  "Birds Directive (Natura 2000)" = "N2000 Birds",
+  "Ramsar Site" = "Ramsar Site",
+  "Biosphere Reserve (Buffer/Transition)" = "BR Buffer",
+  "Other" = "Other",
+  "Not protected" = "Not protected"
+)
+
+# Recode IUCN_CAT_final directly with short labels - labels are created above
+summary_iucn_combined <- summary_iucn_combined %>%
+  mutate(
+    IUCN_CAT_final_combined = factor(
+      label_map[as.character(IUCN_CAT_final_combined)],
+      levels = unname(label_map)
+    )
+  )
+# summary_iucn_combined$IUCN_CAT_final_combined <- factor(summary_iucn_combined$IUCN_CAT_final_combined,
+#                                                         levels = c("Not protected",   "IUCN Ia/Ib",
+#                                                                    "IUCN II" ,
+#                                                                    "BR Core",
+#                                                                    "IUCN III",
+#                                                                    "IUCN IV",
+#                                                                    "IUCN V",
+#                                                                    "N2000 Habitats",
+#                                                                    "N2000 Birds",
+#                                                                    "Ramsar Site",
+#                                                                    "BR Buffer",
+#                                                                    "Other"))
+summary_iucn_combined$IUCN_CAT_final_combined <- relevel(summary_iucn_combined$IUCN_CAT_final_combined, ref = "Not protected")
+
+m_combined <- lmer(mean_occ_change ~ IUCN_CAT_final_combined + (1 | TaxonName), data = summary_iucn_combined)
+summary(m_combined)
+levels(summary_iucn_combined$IUCN_CAT_final_combined)
+table(summary_iucn_combined$IUCN_CAT_final_combined)
+
+
+# Plotting
+plot( ggpredict(m_combined, terms = "IUCN_CAT_final_combined") ) +
+  labs(x = "Protection", y = "Log Ratio of SOP (T3/T1)") +
+  theme_minimal()
+
+# plotting
+
+preds_desig <- ggpredict(m_combined, terms = c( "IUCN_CAT_final_combined"))
+# Scale estiamtes to percentage
+preds_desig$predicted <- preds_desig$predicted * 100
+preds_desig$conf.low <- preds_desig$conf.low * 100
+preds_desig$conf.high <- preds_desig$conf.high * 100
+preds_desig$group <- factor(preds_desig$group)
+
+ref_line <- preds_desig %>%
+  filter(x == "Not protected") %>%
+  pull(predicted)
+
+
+# 1) left panel: half-violins + rawdatapoints + boxplot
+p1_desig <- ggplot(summary_iucn_combined, aes(x = IUCN_CAT_final_combined, y = mean_occ_change*100)) +
+  coord_flip() +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "grey30", linewidth = 0.8) +
+  # Violinplots
+  geom_half_violin(
+    data = summary_iucn_combined,
+    aes(x = IUCN_CAT_final_combined, y = mean_occ_change*100, fill = IUCN_CAT_final_combined),
+    side = "l", alpha = 0.6, color = NA, position = position_nudge(x = -0.05), scale= "count"
+  ) +
+  # slimmer boxplots
+  geom_boxplot(
+    data = summary_iucn_combined,
+    aes(x = IUCN_CAT_final_combined, y = mean_occ_change*100, fill = IUCN_CAT_final_combined, color= IUCN_CAT_final_combined),
+    width = 0.3,
+    outlier.shape = NA,
+    linewidth = 0.8,
+    position = position_nudge(x = 0.2),
+    alpha = 0.6
+  ) +
+  # geom_hline(yintercept = ref_line, linetype = "solid", color = "firebrick", linewidth = 1) + 
+  # geom_jitter(aes(color = protection_cat), width  = 0.02, size   = 1.5,alpha  = 0.4) +
+  labs(
+    x = "Protection design",
+    y = NULL,
+    color = "Protection design",
+    fill = "Protection design"
+  ) +
+  scale_fill_manual(values = colors)+
+  scale_color_manual(values = colors)+
+  
+  ylim(-25, 20) +
+  
+  theme_bw(base_family = "Roboto Condensed", base_size = 13) +
+  theme(
+    text             = element_text(family = "roboto_condensed"),
+    legend.title     = element_text(size = 80),
+    legend.text      = element_text(size = 70),
+    axis.title.x     = element_blank(),       # no x-axis title
+    axis.title.y     = element_text(size = 80),
+    axis.text.x      = element_text(size = 90), # no x-axis text
+    axis.text.y      = element_text(size = 80),
+    legend.position  = "none"
+  )
+p1_desig
+
+# preds_desig$x <- factor(preds_desig$x, levels = levels(summary_iucn_combined$IUCN_CAT_final_combined))
+
+
+
+# 2) right panel - Preds with SE
+p2_desig <- ggplot() +
+  # datapoints (from `summary_general`)
+  geom_jitter(
+    data = summary_iucn_combined,
+    aes(x = IUCN_CAT_final_combined, y = mean_occ_change * 100, color = IUCN_CAT_final_combined),
+    width = 0.2,
+    size = 2,
+    alpha = 0.1
+  ) +
+  # estimates and errorbars
+  geom_errorbar(
+    data = preds_desig,
+    aes(x = x, ymin = conf.low, ymax = conf.high, color = x),
+    width = 0.03,
+    color="black",
+    linewidth = 1,
+    #  position = position_nudge(x = 0.12)
+  ) +
+  geom_point(
+    data = preds_desig,
+    aes(x = x, y = predicted, color = x),
+    size = 4,
+    color= "black",
+    #  position = position_nudge(x = 0.12),
+    alpha = 0.7
+  ) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "grey30", linewidth = 0.8) + 
+  geom_hline(yintercept = ref_line, linetype = "solid", color = scales::muted("firebrick"), linewidth = 1) + 
+  ylim(-35,35)+
+  
+  coord_flip() +
+  #scale_y_continuous(expand = expansion(mult = c(0.1, 0.1))) +
+  scale_fill_manual(values = colors)+
+  scale_color_manual(values = colors)+
+  labs(
+    x = NULL,
+    y = NULL
+  ) +
+  theme_bw(base_family = "Roboto Condensed", base_size = 13) +
+  theme(
+    text = element_text(family = "roboto_condensed"),
+    legend.position = "none",
+    axis.text.y     = element_blank(), 
+    axis.ticks.y    = element_blank(),
+    #axis.text.y = element_text(lineheight = 0.8),  
+    axis.title.x    = element_text(size = 70),
+    axis.text.x     = element_text(size = 80)
+  )
+p2_desig
+
+
+
+p3_desig <- ggplot() +
+  # Modelestimates with Errorbars (from`preds`)
+  # # datapoints (from `summary_general`)
+  # geom_jitter(
+  #   data = summary_iucn_clean,
+  #   aes(x = IUCN_CAT_final, y = mean_occ_change * 100, color = IUCN_CAT_final),
+  #   width = 0.2,
+  #   size = 2,
+  #   alpha = 0.1
+  # ) +
+  # estimates and errorbars
+  geom_errorbar(
+    data = preds_desig,
+    aes(x = x, ymin = conf.low, ymax = conf.high, color = x),
+    width = 0.3,
+    # color="black",
+    linewidth = 1.2,
+    #  position = position_nudge(x = 0.12)
+  ) +
+  geom_point(
+    data = preds_desig,
+    aes(x = x, y = predicted, color = x),
+    size = 5,
+    #color= "black",
+    #  position = position_nudge(x = 0.12),
+    alpha = 0.8
+  ) +
+  #ylim(-35,35)+
+  geom_hline(yintercept = 0, linetype = "dashed", color = "grey30", linewidth = 0.8) + 
+  geom_hline(yintercept = ref_line, linetype = "solid", color = "firebrick", linewidth = 1) + 
+  coord_flip() +
+  scale_y_continuous(expand = expansion(mult = c(0.1, 0.1))) +
+  scale_fill_manual(values = colors)+
+  scale_color_manual(values = colors)+
+  # scale_color_manual(
+  #   values = c(
+  #     "not protected" = "#9ab0c3",  
+  #     "part protected" = "#0077AA",
+  #     "protected" = "#005B96"
+  #   )
+  # ) +
+  labs(
+    x = NULL,
+    y = NULL
+  ) +
+  theme_bw(base_family = "Roboto Condensed", base_size = 13) +
+  theme(
+    text = element_text(family = "roboto_condensed"),
+    legend.position = "none",
+    axis.text.y     = element_blank(), 
+    axis.ticks.y    = element_blank(),
+    axis.title.x    = element_text(size = 70),
+    axis.text.x     = element_text(size = 80)
+  )
+p3_desig
+
+# 3) both plots together
+
+p_patch_desig <- p1_desig + p2_desig & xlab(NULL) & theme(plot.margin = margin(5.5, 20, 0, 5.5))
+p_patch2_desig <- p1_desig + p3_desig & xlab(NULL) & theme(plot.margin = margin(5.5, 20, 0, 5.5))
+iucn_plot_desig <- wrap_elements(panel = p_patch_desig) +
+  labs(tag = "Predicted mean occurrence change (%)") +
+  theme(
+    text  = element_text(family = "roboto_condensed"),
+    plot.tag = element_text(size = rel(8)),
+    plot.tag.position = "bottom"
+  )
+iucn_plot2_desig <- wrap_elements(panel = p_patch2_desig) +
+  labs(tag = "Predicted mean occurrence change (%)") +
+  theme(
+    text  = element_text(family = "roboto_condensed"),
+    plot.tag = element_text(size = rel(8)),
+    plot.tag.position = "bottom"
+  )
+
+# Save the plot
+ggsave(
+  filename = "./figures/iucn-protection-design-performance_vs-notprotected.png",
+  plot = iucn_plot_desig,
+  width = 53,
+  height = 25,
+  units = "cm",
+  dpi = 300
+)
+ggsave(
+  filename = "./figures/iucn-protection-design-performance2_vs-notprotected.png",
+  plot = iucn_plot2_desig,
   width = 53,
   height = 25,
   units = "cm",
